@@ -16,10 +16,10 @@ This is a narrow mitigation of the observed rendering loop, not a claim to have 
 
 ## Regression check
 
-1. Build the app with `bash scripts/build-app.sh release`.
+1. Build the app with `make build-macos`.
 2. Open it and add a repository with multiple worktrees, including long branch names and detached or stale entries.
 3. Scroll through the list, open and dismiss row menus, change window width, and switch away and back.
-4. Leave the application idle, then run `python3 scripts/check-ui-idle.py --pid <pid>`.
+4. Leave the application idle, then run `python3 apps/macos/scripts/check-ui-idle.py --pid <pid>`.
 5. Repeat after several minutes to check for delayed runaway behavior.
 
 The checker samples the main thread and fails if at least 80% of samples are inside SwiftUI layout transactions. Both captured freezes fail this check. A successful check is an observation of that interval, not proof that every possible future interaction is safe.
