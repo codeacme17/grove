@@ -38,7 +38,9 @@ For a faster development build, use `bash scripts/build-app.sh debug`. Open `Pac
 
 The test script also supports Command Line Tools installations that bundle Swift Testing but do not automatically add its framework and macro search paths. With full Xcode selected, it delegates directly to `swift test`.
 
-The bundle targets the machine's architecture and is ad-hoc signed for local use. A public release needs Developer ID signing and notarization. This initial build is not an App Sandbox or Mac App Store build; Git needs access to worktrees outside the selected folder.
+The default build targets the machine's architecture and uses ad-hoc signing. Developer ID signing and Apple notarization are not configured yet. This initial build is not an App Sandbox or Mac App Store build; Git needs access to worktrees outside the selected folder.
+
+Run `make release-macos` from the repository root to build both Apple Silicon and Intel executables, combine them into a universal app, and create `Grove-<version>-macOS-universal.zip` with `SHA256SUMS` in `apps/macos/dist`. The app includes the Apache 2.0 license and uses the same ad-hoc signing.
 
 Menu-bar access: [open, add, refresh, and quit](../../docs/menu-bar.md).
 

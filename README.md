@@ -21,7 +21,18 @@ Grove gives you a visual home for those worktrees. It brings your projects, bran
 
 ## Installation
 
-Grove currently runs on **macOS 14 or later**. Install from source with a **Swift 6 toolchain** (Xcode or compatible Command Line Tools) and **Git**.
+Grove runs on **macOS 14 or later**, on **Apple Silicon and Intel** Macs. Git must be installed and available on your Mac.
+
+1. Download [Grove for macOS](https://github.com/codeacme17/grove/releases/latest).
+2. Unzip the download and move **Grove.app** to your Applications folder.
+3. Open Grove, choose **Add Project…**, and select a Git repository or any of its worktrees. Grove discovers the rest automatically.
+
+The initial release is ad-hoc signed and has not been notarized by Apple. macOS may block the downloaded app; see the release notes for details. You can also build it locally:
+
+<details>
+<summary>Build and install from source</summary>
+
+Requires a **Swift 6 toolchain** (Xcode or compatible Command Line Tools) and **Git**.
 
 ```sh
 git clone https://github.com/codeacme17/grove.git
@@ -33,7 +44,9 @@ ditto apps/macos/dist/Grove.app "$HOME/Applications/Grove.app"
 open "$HOME/Applications/Grove.app"
 ```
 
-The app is installed in your user Applications folder. On first launch, choose **Add Project…** and select a Git repository or any of its worktrees. Grove discovers the rest automatically.
+The app is installed in your user Applications folder.
+
+</details>
 
 For development commands and build details, see the [macOS guide](apps/macos/README.md).
 
