@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("projectNavigationPlacement") private var navigationPlacement: ProjectNavigationPlacement = .sidebar
     @State private var isSidebarVisible = true
     @State private var sidebarWidth: CGFloat = 240
     @State private var isHoveringSidebarHandle = false
@@ -23,46 +24,58 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let showsSidebar = isSidebarVisible && (!isDiffPanelVisible || geometry.size.width >= currentSidebarWidth + 706)
-            HStack(spacing: 0) {
+            let showsSidebar = navigationPlacement == .sidebar && isSidebarVisible && (!isDiffPanelVisible || geometry.size.width >= currentSidebarWidth + 706)
+            VStack(spacing: 0) {
+                ProjectTabBar(model: model, isVisible: navigationPlacement == .top, onRename: { renamingProject = $0 },
+                              onSwitchToSidebar: { setNavigationPlacement(.sidebar, availableWidth: geometry.size.width) })
+                    .frame(height: navigationPlacement == .top ? 48 : 0, alignment: .top)
+                    .clipped()
+                    .allowsHitTesting(navigationPlacement == .top)
+                    .disabled(navigationPlacement != .top)
+                    .accessibilityHidden(navigationPlacement != .top)
                 HStack(spacing: 0) {
-                    sidebar
-                        .frame(width: currentSidebarWidth)
-                    sidebarResizeHandle
-                }
-                .frame(width: showsSidebar ? currentSidebarWidth + 6 : 0, alignment: .trailing)
-                .clipped()
-                .allowsHitTesting(showsSidebar)
-                .disabled(!showsSidebar)
-                .accessibilityHidden(!showsSidebar)
-                DiffWorkspaceSplit(isPresented: isDiffPanelVisible) {
-                    detail
-                        .transaction { $0.animation = nil }
-                } panel: {
-                    if let diffSelection {
-                        FileDiffPanel(selection: diffSelection, isActive: isDiffPanelVisible,
-                                      isBusy: model.busyWorktreePath != nil || model.isLoading,
-                                      refreshedAt: model.updatedAt, revision: diffRevision) {
-                            isDiffPanelVisible = false
+                    HStack(spacing: 0) {
+                        sidebar
+                            .frame(width: currentSidebarWidth)
+                        sidebarResizeHandle
+                    }
+                    .frame(width: showsSidebar ? currentSidebarWidth + 6 : 0, alignment: .trailing)
+                    .clipped()
+                    .allowsHitTesting(showsSidebar)
+                    .disabled(!showsSidebar)
+                    .accessibilityHidden(!showsSidebar)
+                    DiffWorkspaceSplit(isPresented: isDiffPanelVisible) {
+                        detail
+                            .transaction { $0.animation = nil }
+                    } panel: {
+                        if let diffSelection {
+                            FileDiffPanel(selection: diffSelection, isActive: isDiffPanelVisible,
+                                          isBusy: model.busyWorktreePath != nil || model.isLoading,
+                                          refreshedAt: model.updatedAt, revision: diffRevision) {
+                                isDiffPanelVisible = false
+                            }
+                            .id(diffSelection.project.id)
                         }
-                        .id(diffSelection.project.id)
                     }
                 }
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showsSidebar)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: navigationPlacement)
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     Button {
-                        if !showsSidebar && isDiffPanelVisible && geometry.size.width < currentSidebarWidth + 706 {
+                        if navigationPlacement == .top {
+                            setNavigationPlacement(.sidebar, availableWidth: geometry.size.width)
+                        } else if !showsSidebar && isDiffPanelVisible && geometry.size.width < currentSidebarWidth + 706 {
                             isDiffPanelVisible = false
                             isSidebarVisible = true
                         } else {
                             isSidebarVisible.toggle()
                         }
                     } label: {
-                        Label("Toggle Sidebar", systemImage: "sidebar.left")
+                        Label(navigationPlacement == .top ? "Switch to Sidebar" : "Toggle Sidebar", systemImage: "sidebar.left")
                     }
-                    .help(showsSidebar ? "Hide Sidebar" : "Show Sidebar")
+                    .help(navigationPlacement == .top ? "Switch to Sidebar" : (showsSidebar ? "Hide Sidebar" : "Show Sidebar"))
                     .keyboardShortcut("s", modifiers: [.command, .control])
                 }
                 ToolbarItem {
@@ -109,15 +122,6 @@ struct ContentView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                GroveLogo(size: 56)
-                Text("Grove")
-                    .font(.system(size: 21, weight: .medium, design: .rounded))
-                    .tracking(-0.3)
-                    .fixedSize()
-                Spacer()
-            }
-            .padding(20)
             List(selection: $model.selection) {
                 Section("Projects") {
                     ForEach(model.projects) { project in
@@ -128,6 +132,8 @@ struct ContentView: View {
                             .contextMenu {
                                 Button("Rename…") { renamingProject = project }
                                 Button("Remove from Grove", role: .destructive) { model.remove(project) }
+                                Divider()
+                                switchToTopButton
                             }
                     }
                     .onMove(perform: model.moveProjects)
@@ -135,6 +141,7 @@ struct ContentView: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+            .contextMenu { switchToTopButton }
             Button(action: model.chooseProject) {
                 Label(model.isAdding ? "Adding Project…" : "Add Project…", systemImage: "plus")
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -142,6 +149,24 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .padding(16)
             .disabled(model.isAdding || !model.storageReady)
+        }
+        .contentShape(Rectangle())
+        .contextMenu { switchToTopButton }
+    }
+
+    private var switchToTopButton: some View {
+        Button("Switch to Top", systemImage: "rectangle.topthird.inset.filled") {
+            setNavigationPlacement(.top)
+        }
+    }
+
+    private func setNavigationPlacement(_ placement: ProjectNavigationPlacement, availableWidth: CGFloat? = nil) {
+        navigationPlacement = placement
+        if placement == .sidebar {
+            isSidebarVisible = true
+            if let availableWidth, availableWidth < currentSidebarWidth + 706 {
+                isDiffPanelVisible = false
+            }
         }
     }
 

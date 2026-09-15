@@ -16,7 +16,8 @@ A native macOS home for your Git worktrees. Built with SwiftUI and Swift.
 - See branch names, detached commits, locks, stale registrations, and full paths.
 - Refresh with **⌘R** or when returning to the app.
 - Save projects between launches. **Remove from Grove** only removes a saved entry.
-- Drag sidebar projects to reorder them. Right-click a project to rename or remove it; names and order persist between launches. Renaming changes its display name in Grove, not its folder or Git identity.
+- Right-click the project navigation and choose **Switch to Top** for horizontal project tabs, or **Switch to Sidebar** to return. The layout persists between launches; tabs scroll horizontally when needed.
+- Drag sidebar projects or top tabs to reorder them. Right-click a project to rename or remove it; names and order persist between launches. Renaming changes its display name in Grove, not its folder or Git identity.
 - Copy worktree paths or reveal them in Finder.
 
 Worktree cards also support **Pull**, **Switch Branch…**, and **Show Diff**. Pull and branch switching require a clean working tree; diffs are read-only. See [worktree actions](../../docs/worktree-actions.md). A worktree's presence does not indicate that an agent is running.
