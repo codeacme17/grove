@@ -35,6 +35,11 @@ final class WorkspaceModel {
     }
 
     func chooseProject() {
+        guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible) else { return }
+        chooseProject(in: window)
+    }
+
+    func chooseProject(in window: NSWindow) {
         guard storageReady, !isAdding else { return }
         let panel = NSOpenPanel()
         panel.title = "Add a Git project"
@@ -43,7 +48,6 @@ final class WorkspaceModel {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible) else { return }
         isAdding = true
         panel.beginSheetModal(for: window) { response in
             Task { @MainActor in

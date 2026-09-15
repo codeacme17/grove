@@ -38,6 +38,8 @@ The test script also supports Command Line Tools installations that bundle Swift
 
 The bundle targets the machine's architecture and is ad-hoc signed for local use. A public release needs Developer ID signing and notarization. This initial build is not an App Sandbox or Mac App Store build; Git needs access to worktrees outside the selected folder.
 
+Menu-bar access: [open, add, refresh, and quit](../../docs/menu-bar.md).
+
 Appearance controls: [System, Light, and Dark](../../docs/appearance.md).
 
 ## Design
