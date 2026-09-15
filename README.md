@@ -1,53 +1,42 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="apps/macos/Sources/Grove/Resources/AppIconDark.png">
-    <img src="apps/macos/Sources/Grove/Resources/AppIcon.png" alt="Grove logo" width="144" height="144">
+    <img src="apps/macos/Sources/Grove/Resources/AppIcon.png" alt="Grove logo" width="112" height="112">
   </picture>
 </p>
 
-# Grove
+<h1 align="center">Grove</h1>
 
-A home for your Git worktrees, with native desktop apps for each operating system.
+<p align="center">A home for your Git worktrees.</p>
 
-## Platforms
+<br>
 
-| Platform | Status | Implementation |
-| --- | --- | --- |
-| [macOS](apps/macos/README.md) | Working MVP | SwiftUI, AppKit, Swift 6; macOS 14+ |
-| [Windows](apps/windows/README.md) | Planned | Native Windows framework to be selected |
+## Why Grove
 
-## Repository layout
+Git worktrees make it easy to work on several branches at once. Keeping track of them is harder: each task has its own folder, terminal, and local changes. As projects and parallel coding sessions add up, finding the right workspace becomes a task of its own.
 
-```text
-apps/
-  macos/
-    Package.swift
-    Sources/
-      Grove/          # macOS interface and workspace state
-      GroveCore/      # Swift Git integration and persistence
-    Tests/
-    scripts/          # macOS build, test, and diagnostic tools
-  windows/            # Future native Windows application
-docs/                # Product requirements and project documentation
-Makefile              # Root shortcuts for platform commands
-```
+Grove brings your projects and their worktrees into one native desktop app. See which branch lives where, inspect local changes, pull updates, and switch branches without losing your place. Keep projects in a sidebar or arrange them as tabs across the top—whichever fits the way you work.
 
-Each application owns its source, tests, dependencies, build scripts, and generated artifacts. Product requirements and documentation live in `docs/`. GroveCore currently belongs to the macOS application; Windows will have its own native implementation. Add shared code or fixtures only when both applications actually consume them.
+**Less time finding your work. More time doing it.**
 
-## macOS quick start
+## Installation
 
-Requires macOS 14+, a Swift 6 toolchain (Xcode or compatible Command Line Tools), and Git. From the repository root:
+Grove currently runs on **macOS 14 or later**. Install from source with a **Swift 6 toolchain** (Xcode or compatible Command Line Tools) and **Git**.
 
 ```sh
-make test-macos
+git clone https://github.com/codeacme17/grove.git
+cd grove
 make build-macos
-make run-macos
+
+mkdir -p "$HOME/Applications"
+ditto apps/macos/dist/Grove.app "$HOME/Applications/Grove.app"
+open "$HOME/Applications/Grove.app"
 ```
 
-The app is built at `apps/macos/dist/Grove.app`. For a debug build, use `make build-macos CONFIGURATION=debug`. Open `apps/macos/Package.swift` in Xcode for development. See the [macOS guide](apps/macos/README.md) for platform details.
+The app is installed in your user Applications folder. On first launch, choose **Add Project…** and select a Git repository or any of its worktrees. Grove discovers the rest automatically.
 
-## MVP
+For development commands and build details, see the [macOS guide](apps/macos/README.md).
 
-Add a local Git project and browse all its registered worktrees, including linked worktrees outside the project folder, detached HEADs, and stale registrations. Projects persist between launches. Worktree cards support fast-forward Pull, switching local branches, and expandable local diffs. See [worktree actions](docs/worktree-actions.md) for behavior and requirements.
+---
 
-See the [MVP specification](docs/mvp.md) for acceptance criteria. Windows implementation is planned and is not part of this MVP.
+<p align="center">Licensed under the <a href="LICENSE">Apache License, Version 2.0</a>.</p>
