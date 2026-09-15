@@ -13,9 +13,9 @@
 
 ## Why Grove
 
-Git worktrees make it easy to work on several branches at once. Keeping track of them is harder: each task has its own folder, terminal, and local changes. As projects and parallel coding sessions add up, finding the right workspace becomes a task of its own.
+Vibe coding makes it easy to hand several tasks to AI coding agents at once. As agents work in parallel, they create Git worktrees to keep their changes isolated. Those worktrees quickly multiply across projects and folders, making it hard to see what exists, which branch each worktree uses, and what has changed—all at a glance.
 
-Grove brings your projects and their worktrees into one native desktop app. See which branch lives where, inspect local changes, pull updates, and switch branches without losing your place. Keep projects in a sidebar or arrange them as tabs across the top—whichever fits the way you work.
+Grove gives you a visual home for those worktrees. It brings your projects, branches, paths, and local changes together in one native desktop app, so you can navigate and manage the workspaces your agents create. Inspect diffs, pull updates, and switch branches without hunting through folders and terminals. Keep projects in a sidebar or arrange them as tabs across the top—whichever fits the way you work.
 
 **Less time finding your work. More time doing it.**
 
