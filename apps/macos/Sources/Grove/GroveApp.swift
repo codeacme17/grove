@@ -11,10 +11,12 @@ struct GroveApp: App {
             ContentView(model: model)
                 .frame(minWidth: 780, minHeight: 500)
                 .groveBranding()
+                .groveAppearance()
         }
         .defaultSize(width: 1080, height: 720)
         .commands {
             GroveBrandCommands()
+            GroveAppearanceCommands()
             CommandGroup(replacing: .newItem) {
                 Button("Add Project…", action: model.chooseProject)
                     .keyboardShortcut("o")
