@@ -7,7 +7,7 @@ let package = Package(
     products: [.executable(name: "Grove", targets: ["Grove"])],
     targets: [
         .target(name: "GroveCore"),
-        .executableTarget(name: "Grove", dependencies: ["GroveCore"]),
+        .executableTarget(name: "Grove", dependencies: ["GroveCore"], resources: [.process("Resources")]),
         .testTarget(name: "GroveCoreTests", dependencies: ["GroveCore"])
     ]
 )

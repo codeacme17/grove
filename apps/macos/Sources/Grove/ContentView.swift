@@ -10,7 +10,7 @@ struct ContentView: View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    Image(systemName: "tree.fill").font(.title).foregroundStyle(.green)
+                    GroveLogo()
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Grove").font(.title2.weight(.semibold))
                         Text("A home for your worktrees").font(.caption).foregroundStyle(.secondary)
@@ -94,7 +94,9 @@ struct ContentView: View {
                         Text(error).textSelection(.enabled)
                     } actions: { Button("Retry", action: model.refresh) }
                 } else if model.worktrees.isEmpty {
-                    ContentUnavailableView("No registered worktrees", systemImage: "tree", description: Text("Refresh to read the latest state from Git."))
+                    ContentUnavailableView {
+                        GroveEmptyStateLabel(title: "No registered worktrees")
+                    } description: { Text("Refresh to read the latest state from Git.") }
                 } else {
                     ScrollView {
                         VStack(spacing: 12) {
@@ -118,7 +120,7 @@ struct ContentView: View {
             }
         } else {
             ContentUnavailableView {
-                Label("Your worktrees, in one place", systemImage: "tree")
+                GroveEmptyStateLabel(title: "Your worktrees, in one place")
             } description: {
                 Text("Add a Git project to discover all its worktrees,\nwherever they were created.")
             } actions: {

@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Sources/Grove/Resources/AppIconDark.png">
+    <img src="Sources/Grove/Resources/AppIcon.png" alt="Grove logo" width="144" height="144">
+  </picture>
+</p>
+
 # Grove for macOS
 
 A native macOS home for your Git worktrees. Built with SwiftUI and Swift.

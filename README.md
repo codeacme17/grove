@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/macos/Sources/Grove/Resources/AppIconDark.png">
+    <img src="apps/macos/Sources/Grove/Resources/AppIcon.png" alt="Grove logo" width="144" height="144">
+  </picture>
+</p>
+
 # Grove
 
 A home for your Git worktrees, with native desktop apps for each operating system.

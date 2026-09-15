@@ -11,6 +11,7 @@ binary_dir="$(swift build -c "$configuration" --show-bin-path)"
 app="dist/Grove.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary_dir/Grove" "$app/Contents/MacOS/Grove"
+ditto "$binary_dir/Grove_Grove.bundle" "$app/Contents/Resources/Grove_Grove.bundle"
 bash scripts/build-icon.sh "$app/Contents/Resources/Grove.icns"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
