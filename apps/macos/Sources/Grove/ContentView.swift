@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var isSidebarVisible = true
     @State private var sidebarWidth: CGFloat = 240
     @State private var isHoveringSidebarHandle = false
+    @State private var renamingProject: Project?
     @GestureState private var sidebarDrag: CGFloat = 0
     @GestureState private var isResizingSidebar = false
 
@@ -55,6 +56,11 @@ struct ContentView: View {
         .onAppear { model.refresh() }
         .onChange(of: model.selection) { model.refresh() }
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.refresh() } }
+        .sheet(item: $renamingProject) { project in
+            RenameProjectSheet(project: project) { name in
+                try model.rename(project, to: name)
+            }
+        }
         .alert("Grove", isPresented: Binding(
             get: { model.actionError != nil }, set: { if !$0 { model.actionError = nil } }
         )) { Button("OK") { model.actionError = nil } } message: {
@@ -81,9 +87,11 @@ struct ContentView: View {
                             .help(project.gitDirectory)
                             .tag(project.id)
                             .contextMenu {
+                                Button("Rename…") { renamingProject = project }
                                 Button("Remove from Grove", role: .destructive) { model.remove(project) }
                             }
                     }
+                    .onMove(perform: model.moveProjects)
                 }
             }
             .listStyle(.sidebar)

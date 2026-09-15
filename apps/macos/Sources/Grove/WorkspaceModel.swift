@@ -1,6 +1,7 @@
 import AppKit
 import GroveCore
 import Observation
+import SwiftUI
 
 @MainActor @Observable
 final class WorkspaceModel {
@@ -15,12 +16,15 @@ final class WorkspaceModel {
     private(set) var updatedAt: Date?
     var actionError: String?
     @ObservationIgnored private let repository = GitRepository()
-    @ObservationIgnored private let store = ProjectStore()
+    @ObservationIgnored private let store: ProjectStore
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
     var selectedProject: Project? { projects.first { $0.id == selection } }
 
-    init() { reloadProjects() }
+    init(store: ProjectStore = ProjectStore()) {
+        self.store = store
+        reloadProjects()
+    }
 
     func reloadProjects() {
         do {
@@ -77,6 +81,33 @@ final class WorkspaceModel {
             projects = next
             if selection == project.id { selection = next.first?.id }
         } catch { actionError = "Could not save the project list.\n\(error.localizedDescription)" }
+    }
+
+    func moveProjects(from offsets: IndexSet, to destination: Int) {
+        guard storageReady else { return }
+        var next = projects
+        next.move(fromOffsets: offsets, toOffset: destination)
+        do {
+            try store.save(next)
+            projects = next
+        } catch { actionError = "Could not save the project order.\n\(error.localizedDescription)" }
+    }
+
+    func rename(_ project: Project, to name: String) throws {
+        guard storageReady else {
+            throw GroveError.message("Saved projects are unavailable. Retry loading them first.")
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw GroveError.message("Enter a project name.")
+        }
+        guard let index = projects.firstIndex(where: { $0.id == project.id }) else {
+            throw GroveError.message("This project is no longer in Grove.")
+        }
+        var next = projects
+        next[index] = Project(name: trimmedName, gitDirectory: project.gitDirectory)
+        try store.save(next)
+        projects = next
     }
 
     func refresh() {
