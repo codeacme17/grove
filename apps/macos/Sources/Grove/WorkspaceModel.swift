@@ -15,6 +15,8 @@ final class WorkspaceModel {
     private(set) var loadError: String?
     private(set) var updatedAt: Date?
     var actionError: String?
+    private(set) var busyWorktreePath: String?
+    private(set) var worktreeMessages: [String: String] = [:]
     @ObservationIgnored private let repository = GitRepository()
     @ObservationIgnored private let store: ProjectStore
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -108,6 +110,34 @@ final class WorkspaceModel {
         next[index] = Project(name: trimmedName, gitDirectory: project.gitDirectory)
         try store.save(next)
         projects = next
+    }
+
+    func pull(_ worktree: Worktree, project: Project) async throws {
+        try await performWorktreeOperation(worktree, project: project) {
+            _ = try await WorktreeRepository().pull(worktree, project: project)
+            return "Pull completed."
+        }
+    }
+
+    func switchBranch(_ name: String, in worktree: Worktree, project: Project) async throws {
+        try await performWorktreeOperation(worktree, project: project) {
+            try await WorktreeRepository().switchBranch(name, in: worktree, project: project)
+            return "Switched to \(name)."
+        }
+    }
+
+    private func performWorktreeOperation(_ worktree: Worktree, project: Project,
+                                          action: () async throws -> String) async throws {
+        guard busyWorktreePath == nil else {
+            throw GroveError.message("Wait for the current Git operation to finish.")
+        }
+        busyWorktreePath = worktree.path
+        worktreeMessages[worktree.path] = nil
+        defer {
+            busyWorktreePath = nil
+            if selectedProject?.id == project.id { refresh() }
+        }
+        worktreeMessages[worktree.path] = try await action()
     }
 
     func refresh() {

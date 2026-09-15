@@ -12,14 +12,17 @@ public struct GitRunner: Sendable {
         self.timeout = timeout
     }
 
-    public func run(_ arguments: [String]) async throws -> Data {
+    public func run(_ arguments: [String], timeout: TimeInterval? = nil,
+                    acceptedExitCodes: Set<Int32> = [0], maximumOutputBytes: Int? = nil) async throws -> Data {
         let execution = Execution()
+        let duration = timeout ?? self.timeout
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
                     continuation.resume(with: Result {
-                        try execution.run(executable: executable, arguments: arguments, timeout: timeout)
+                        try execution.run(executable: executable, arguments: arguments, timeout: duration,
+                                          acceptedExitCodes: acceptedExitCodes, maximumOutputBytes: maximumOutputBytes)
                     })
                 }
             }
@@ -52,7 +55,8 @@ private final class Execution: @unchecked Sendable {
         lock.unlock()
     }
 
-    func run(executable: URL, arguments: [String], timeout: TimeInterval) throws -> Data {
+    func run(executable: URL, arguments: [String], timeout: TimeInterval,
+             acceptedExitCodes: Set<Int32>, maximumOutputBytes: Int?) throws -> Data {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -100,10 +104,17 @@ private final class Execution: @unchecked Sendable {
         lock.unlock()
         if didTimeOut { throw GroveError.message("Git took too long to respond. Check that the repository drive is available, then retry.") }
         if didStop { throw CancellationError() }
-        guard command.terminationStatus == 0 else {
-            let detail = String(decoding: try Data(contentsOf: errorURL), as: UTF8.self)
+        guard command.terminationReason == .exit, acceptedExitCodes.contains(command.terminationStatus) else {
+            let errorReader = try FileHandle(forReadingFrom: errorURL)
+            defer { try? errorReader.close() }
+            let detail = String(decoding: try errorReader.read(upToCount: 65_536) ?? Data(), as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             throw GroveError.message(detail.isEmpty ? "Git exited with status \(command.terminationStatus)." : detail)
+        }
+        if let maximumOutputBytes {
+            let reader = try FileHandle(forReadingFrom: outputURL)
+            defer { try? reader.close() }
+            return try reader.read(upToCount: maximumOutputBytes) ?? Data()
         }
         return try Data(contentsOf: outputURL)
     }

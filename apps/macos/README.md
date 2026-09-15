@@ -19,7 +19,7 @@ A native macOS home for your Git worktrees. Built with SwiftUI and Swift.
 - Drag sidebar projects to reorder them. Right-click a project to rename or remove it; names and order persist between launches. Renaming changes its display name in Grove, not its folder or Git identity.
 - Copy worktree paths or reveal them in Finder.
 
-Grove does not modify repositories. A worktree's presence does not indicate that an agent is running.
+Worktree cards also support **Pull**, **Switch Branch…**, and **Show Diff**. Pull and branch switching require a clean working tree; diffs are read-only. See [worktree actions](../../docs/worktree-actions.md). A worktree's presence does not indicate that an agent is running.
 
 ## Build and run
 
@@ -50,7 +50,7 @@ Appearance controls: [System, Light, and Dark](../../docs/appearance.md).
 - `Tests/GroveCoreTests`: real temporary Git repositories, parser, persistence, timeout, and cancellation tests.
 - `Tests/GroveTests`: project ordering, renaming, removal, and persistence failure tests for workspace state.
 
-Project identity is the canonical common Git directory. Worktree data comes from `git worktree list --porcelain -z`; paths are passed as process arguments, never interpolated into shell commands. Git operations run off the UI thread, have a 15-second timeout, and are cancelled when superseded. Temporary output files avoid pipe-buffer deadlocks.
+Project identity is the canonical common Git directory. Worktree data comes from `git worktree list --porcelain -z`; paths are passed as process arguments, never interpolated into shell commands. Git operations run off the UI thread, with a 15-second command timeout (120 seconds for Pull). Superseded reads are cancelled; user-requested writes run to completion or timeout. Temporary output files avoid pipe-buffer deadlocks.
 
 Projects are stored in `~/Library/Application Support/Grove/projects.json`. A damaged file is preserved and reported instead of silently overwritten. Restore valid JSON and use **Retry** if this occurs.
 

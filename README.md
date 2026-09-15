@@ -48,6 +48,6 @@ The app is built at `apps/macos/dist/Grove.app`. For a debug build, use `make bu
 
 ## MVP
 
-Add a local Git project and browse all its registered worktrees, including linked worktrees outside the project folder, detached HEADs, and stale registrations. Projects persist between launches. Repository operations are read-only.
+Add a local Git project and browse all its registered worktrees, including linked worktrees outside the project folder, detached HEADs, and stale registrations. Projects persist between launches. Worktree cards support fast-forward Pull, switching local branches, and expandable local diffs. See [worktree actions](docs/worktree-actions.md) for behavior and requirements.
 
 See the [MVP specification](docs/mvp.md) for acceptance criteria. Windows implementation is planned and is not part of this MVP.

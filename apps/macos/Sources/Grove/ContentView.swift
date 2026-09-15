@@ -11,55 +11,89 @@ struct ContentView: View {
     @State private var sidebarWidth: CGFloat = 240
     @State private var isHoveringSidebarHandle = false
     @State private var renamingProject: Project?
+    @State private var switchingWorktree: BranchSwitchTarget?
+    @State private var expandedDiffs: Set<String> = []
+    @State private var diffSelection: FileDiffSelection?
+    @State private var diffRevision = 0
     @GestureState private var sidebarDrag: CGFloat = 0
     @GestureState private var isResizingSidebar = false
 
     private var currentSidebarWidth: CGFloat { min(320, max(220, sidebarWidth + sidebarDrag)) }
 
     var body: some View {
-        HStack(spacing: 0) {
+        GeometryReader { geometry in
+            let showsSidebar = isSidebarVisible && (diffSelection == nil || geometry.size.width >= currentSidebarWidth + 706)
             HStack(spacing: 0) {
-                sidebar
-                    .frame(width: currentSidebarWidth)
-                sidebarResizeHandle
+                HStack(spacing: 0) {
+                    sidebar
+                        .frame(width: currentSidebarWidth)
+                    sidebarResizeHandle
+                }
+                .frame(width: showsSidebar ? currentSidebarWidth + 6 : 0, alignment: .trailing)
+                .clipped()
+                .allowsHitTesting(showsSidebar)
+                .disabled(!showsSidebar)
+                .accessibilityHidden(!showsSidebar)
+                DiffWorkspaceSplit(isPresented: diffSelection != nil) {
+                    detail
+                } panel: {
+                    if let diffSelection {
+                        FileDiffPanel(selection: diffSelection,
+                                      isBusy: model.busyWorktreePath != nil || model.isLoading,
+                                      refreshedAt: model.updatedAt, revision: diffRevision) {
+                            self.diffSelection = nil
+                        }
+                    }
+                }
             }
-            .frame(width: isSidebarVisible ? currentSidebarWidth + 6 : 0, alignment: .trailing)
-            .clipped()
-            .allowsHitTesting(isSidebarVisible)
-            .disabled(!isSidebarVisible)
-            .accessibilityHidden(!isSidebarVisible)
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showsSidebar)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: diffSelection != nil)
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        if !showsSidebar && diffSelection != nil && geometry.size.width < currentSidebarWidth + 706 {
+                            diffSelection = nil
+                            isSidebarVisible = true
+                        } else {
+                            isSidebarVisible.toggle()
+                        }
+                    } label: {
+                        Label("Toggle Sidebar", systemImage: "sidebar.left")
+                    }
+                    .help(showsSidebar ? "Hide Sidebar" : "Show Sidebar")
+                    .keyboardShortcut("s", modifiers: [.command, .control])
+                }
+                ToolbarItem {
+                    if model.selectedProject != nil {
+                        Button(action: model.refresh) { Label("Refresh", systemImage: "arrow.clockwise") }
+                            .help("Refresh Worktrees (⌘R)")
+                    }
+                }
+            }
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: isSidebarVisible)
         .background(colorScheme == .light ? GroveBrand.lightBackground : Color(nsColor: .windowBackgroundColor))
         .toolbarBackground(colorScheme == .light ? AnyShapeStyle(GroveBrand.lightBackground) : AnyShapeStyle(.bar), for: .windowToolbar)
         .toolbarBackground(colorScheme == .light ? .visible : .automatic, for: .windowToolbar)
         .navigationTitle(model.selectedProject?.name ?? "Grove")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    isSidebarVisible.toggle()
-                } label: {
-                    Label("Toggle Sidebar", systemImage: "sidebar.left")
-                }
-                .help(isSidebarVisible ? "Hide Sidebar" : "Show Sidebar")
-                .keyboardShortcut("s", modifiers: [.command, .control])
-            }
-            ToolbarItem {
-                if model.selectedProject != nil {
-                    Button(action: model.refresh) { Label("Refresh", systemImage: "arrow.clockwise") }
-                        .help("Refresh Worktrees (⌘R)")
-                }
+        .onAppear { model.refresh() }
+        .onChange(of: model.selection) {
+            diffSelection = nil
+            model.refresh()
+        }
+        .onChange(of: model.updatedAt) { _, date in
+            guard date != nil, let diffSelection else { return }
+            if !model.worktrees.contains(where: { $0.path == diffSelection.worktree.path && !$0.isBare && $0.pruneReason == nil }) {
+                self.diffSelection = nil
             }
         }
-        .onAppear { model.refresh() }
-        .onChange(of: model.selection) { model.refresh() }
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.refresh() } }
         .sheet(item: $renamingProject) { project in
             RenameProjectSheet(project: project) { name in
                 try model.rename(project, to: name)
             }
+        }
+        .sheet(item: $switchingWorktree) { target in
+            SwitchBranchSheet(target: target, model: model)
         }
         .alert("Grove", isPresented: Binding(
             get: { model.actionError != nil }, set: { if !$0 { model.actionError = nil } }
@@ -167,7 +201,25 @@ struct ContentView: View {
                     ScrollView {
                         VStack(spacing: 12) {
                             ForEach(Array(model.worktrees.enumerated()), id: \.element.id) { index, worktree in
-                                WorktreeRow(worktree: worktree, isMain: index == 0)
+                                WorktreeRow(worktree: worktree, project: project, isMain: index == 0,
+                                            model: model, isDiffExpanded: Binding(
+                                                get: { expandedDiffs.contains(worktree.path) },
+                                                set: { expanded in
+                                                    if expanded { expandedDiffs.insert(worktree.path) }
+                                                    else { expandedDiffs.remove(worktree.path) }
+                                                }
+                                            ), selectedChange: Binding(
+                                                get: { diffSelection?.worktree.path == worktree.path ? diffSelection?.change : nil },
+                                                set: { change in
+                                                    if let change {
+                                                        diffSelection = FileDiffSelection(change: change, worktree: worktree, project: project)
+                                                    } else if diffSelection?.worktree.path == worktree.path {
+                                                        diffSelection = nil
+                                                    }
+                                                }
+                                            ), onDiffRefresh: { diffRevision += 1 }, onSwitchBranch: {
+                                                switchingWorktree = BranchSwitchTarget(worktree: worktree, project: project)
+                                            })
                             }
                         }
                         .padding(24)
@@ -177,12 +229,10 @@ struct ContentView: View {
                     Image(systemName: "internaldrive")
                     Text(project.gitDirectory).lineLimit(1).truncationMode(.middle).help(project.gitDirectory)
                     Spacer(minLength: 12)
-                    if let date = model.updatedAt {
+                    if model.updatedAt != nil {
                         Text("\(model.worktrees.count) \(model.worktrees.count == 1 ? "worktree" : "worktrees")")
                             .monospacedDigit()
                             .fixedSize()
-                        Text("·")
-                        Text("Updated \(date.formatted(date: .omitted, time: .shortened))")
                     }
                 }
                 .font(.caption).foregroundStyle(.secondary).padding(12)
@@ -198,66 +248,5 @@ struct ContentView: View {
                     .disabled(model.isAdding || !model.storageReady)
             }
         }
-    }
-}
-
-private struct WorktreeRow: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let worktree: Worktree
-    let isMain: Bool
-    private var exists: Bool { FileManager.default.fileExists(atPath: worktree.path) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: isMain ? "house" : "arrow.triangle.branch")
-                    .font(.title3).foregroundStyle(.green)
-                    .frame(width: 36, height: 36)
-                    .background(.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack {
-                        Text(worktree.name).font(.headline).textSelection(.enabled)
-                        if isMain && !worktree.isBare { badge("Main") }
-                        if worktree.isBare { badge("Bare") }
-                    }
-                    Label(worktree.revision, systemImage: worktree.isDetached ? "circle.dotted" : "arrow.triangle.branch")
-                        .font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-                Spacer(minLength: 0)
-                Menu {
-                    Button("Copy Path") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(worktree.path, forType: .string)
-                    }
-                    Button("Reveal in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: worktree.path)])
-                    }.disabled(!exists)
-                } label: { Image(systemName: "ellipsis") }
-                    .menuStyle(.borderlessButton).fixedSize()
-                    .accessibilityLabel("Actions for \(worktree.name)")
-            }
-            Text(worktree.path).font(.caption).foregroundStyle(.secondary)
-                .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-            if worktree.isDetached || worktree.lockReason != nil || worktree.pruneReason != nil || !exists {
-                HStack(spacing: 8) {
-                    if worktree.isDetached { badge("Detached HEAD") }
-                    if let reason = worktree.lockReason { badge("Locked").help(reason.isEmpty ? "Locked by Git" : reason) }
-                    if let reason = worktree.pruneReason { badge("Prunable").help(reason) }
-                    if !exists { badge("Path unavailable") }
-                }
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(colorScheme == .light ? AnyShapeStyle(GroveBrand.lightBackground) : AnyShapeStyle(.background),
-                    in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
-    }
-
-    private func badge(_ text: String) -> some View {
-        Text(text).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
-            .padding(.horizontal, 7).padding(.vertical, 3)
-            .background(.quaternary, in: Capsule())
     }
 }
