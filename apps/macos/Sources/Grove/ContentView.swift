@@ -5,52 +5,52 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var model: WorkspaceModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isSidebarVisible = true
+    @State private var sidebarWidth: CGFloat = 240
+    @State private var isHoveringSidebarHandle = false
+    @GestureState private var sidebarDrag: CGFloat = 0
+    @GestureState private var isResizingSidebar = false
+
+    private var currentSidebarWidth: CGFloat { min(320, max(220, sidebarWidth + sidebarDrag)) }
 
     var body: some View {
-        NavigationSplitView {
-            VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    GroveLogo()
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Grove").font(.title2.weight(.semibold))
-                        Text("A home for your worktrees").font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .padding(20)
-                List(selection: $model.selection) {
-                    Section("Projects") {
-                        ForEach(model.projects) { project in
-                            Label(project.name, systemImage: "folder")
-                                .lineLimit(1)
-                                .help(project.gitDirectory)
-                                .tag(project.id)
-                                .contextMenu {
-                                    Button("Remove from Grove", role: .destructive) { model.remove(project) }
-                                }
-                        }
-                    }
-                }
-                .listStyle(.sidebar)
-                Divider()
-                Button(action: model.chooseProject) {
-                    Label(model.isAdding ? "Adding Project…" : "Add Project…", systemImage: "plus")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .padding(16)
-                .disabled(model.isAdding || !model.storageReady)
+        HStack(spacing: 0) {
+            HStack(spacing: 0) {
+                sidebar
+                    .frame(width: currentSidebarWidth)
+                sidebarResizeHandle
             }
-            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
-        } detail: {
+            .frame(width: isSidebarVisible ? currentSidebarWidth + 6 : 0, alignment: .trailing)
+            .clipped()
+            .allowsHitTesting(isSidebarVisible)
+            .disabled(!isSidebarVisible)
+            .accessibilityHidden(!isSidebarVisible)
             detail
-                .navigationTitle(model.selectedProject?.name ?? "Grove")
-                .toolbar {
-                    if model.selectedProject != nil {
-                        Button(action: model.refresh) { Label("Refresh", systemImage: "arrow.clockwise") }
-                            .help("Refresh Worktrees (⌘R)")
-                    }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: isSidebarVisible)
+        .background(colorScheme == .light ? GroveBrand.lightBackground : Color(nsColor: .windowBackgroundColor))
+        .toolbarBackground(colorScheme == .light ? AnyShapeStyle(GroveBrand.lightBackground) : AnyShapeStyle(.bar), for: .windowToolbar)
+        .toolbarBackground(colorScheme == .light ? .visible : .automatic, for: .windowToolbar)
+        .navigationTitle(model.selectedProject?.name ?? "Grove")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    isSidebarVisible.toggle()
+                } label: {
+                    Label("Toggle Sidebar", systemImage: "sidebar.left")
                 }
+                .help(isSidebarVisible ? "Hide Sidebar" : "Show Sidebar")
+                .keyboardShortcut("s", modifiers: [.command, .control])
+            }
+            ToolbarItem {
+                if model.selectedProject != nil {
+                    Button(action: model.refresh) { Label("Refresh", systemImage: "arrow.clockwise") }
+                        .help("Refresh Worktrees (⌘R)")
+                }
+            }
         }
         .onAppear { model.refresh() }
         .onChange(of: model.selection) { model.refresh() }
@@ -62,6 +62,78 @@ struct ContentView: View {
         }
     }
 
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                GroveLogo(size: 56)
+                Text("Grove")
+                    .font(.system(size: 21, weight: .medium, design: .rounded))
+                    .tracking(-0.3)
+                    .fixedSize()
+                Spacer()
+            }
+            .padding(20)
+            List(selection: $model.selection) {
+                Section("Projects") {
+                    ForEach(model.projects) { project in
+                        Label(project.name, systemImage: "folder")
+                            .lineLimit(1)
+                            .help(project.gitDirectory)
+                            .tag(project.id)
+                            .contextMenu {
+                                Button("Remove from Grove", role: .destructive) { model.remove(project) }
+                            }
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            Button(action: model.chooseProject) {
+                Label(model.isAdding ? "Adding Project…" : "Add Project…", systemImage: "plus")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .padding(16)
+            .disabled(model.isAdding || !model.storageReady)
+        }
+    }
+
+    private var sidebarResizeHandle: some View {
+        Color.clear
+            .frame(width: 6)
+            .overlay {
+                Rectangle()
+                    .fill(.secondary.opacity(0.35))
+                    .frame(width: 1)
+                    .opacity(isHoveringSidebarHandle || isResizingSidebar ? 1 : 0)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.12),
+                               value: isHoveringSidebarHandle || isResizingSidebar)
+                    .allowsHitTesting(false)
+            }
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                isHoveringSidebarHandle = hovering
+                if hovering { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
+            }
+            .gesture(
+                DragGesture(coordinateSpace: .global)
+                    .updating($sidebarDrag) { value, state, _ in state = value.translation.width }
+                    .updating($isResizingSidebar) { _, state, _ in state = true }
+                    .onEnded { value in
+                        sidebarWidth = min(320, max(220, sidebarWidth + value.translation.width))
+                    }
+            )
+            .accessibilityLabel("Sidebar width")
+            .accessibilityValue("\(Int(sidebarWidth)) points")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: sidebarWidth = min(320, sidebarWidth + 20)
+                case .decrement: sidebarWidth = max(220, sidebarWidth - 20)
+                @unknown default: break
+                }
+            }
+    }
+
     @ViewBuilder private var detail: some View {
         if let error = model.storageError {
             ContentUnavailableView {
@@ -71,20 +143,6 @@ struct ContentView: View {
             }
         } else if let project = model.selectedProject {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Worktrees").font(.largeTitle.weight(.semibold))
-                        Text("Every working tree, together.").foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if model.updatedAt != nil {
-                        Text("\(model.worktrees.count)")
-                            .font(.title2.monospacedDigit()).foregroundStyle(.secondary)
-                            .padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-                    }
-                }
-                .padding(24)
-                Divider()
                 if model.isLoading {
                     ProgressView("Reading worktrees…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let error = model.loadError {
@@ -107,12 +165,15 @@ struct ContentView: View {
                         .padding(24)
                     }
                 }
-                Divider()
                 HStack(spacing: 8) {
                     Image(systemName: "internaldrive")
                     Text(project.gitDirectory).lineLimit(1).truncationMode(.middle).help(project.gitDirectory)
                     Spacer(minLength: 12)
                     if let date = model.updatedAt {
+                        Text("\(model.worktrees.count) \(model.worktrees.count == 1 ? "worktree" : "worktrees")")
+                            .monospacedDigit()
+                            .fixedSize()
+                        Text("·")
                         Text("Updated \(date.formatted(date: .omitted, time: .shortened))")
                     }
                 }
@@ -133,6 +194,7 @@ struct ContentView: View {
 }
 
 private struct WorktreeRow: View {
+    @Environment(\.colorScheme) private var colorScheme
     let worktree: Worktree
     let isMain: Bool
     private var exists: Bool { FileManager.default.fileExists(atPath: worktree.path) }
@@ -180,7 +242,8 @@ private struct WorktreeRow: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
+        .background(colorScheme == .light ? AnyShapeStyle(GroveBrand.lightBackground) : AnyShapeStyle(.background),
+                    in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
     }
 
