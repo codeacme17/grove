@@ -97,7 +97,7 @@ struct ContentView: View {
                     ContentUnavailableView("No registered worktrees", systemImage: "tree", description: Text("Refresh to read the latest state from Git."))
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 12) {
+                        VStack(spacing: 12) {
                             ForEach(Array(model.worktrees.enumerated()), id: \.element.id) { index, worktree in
                                 WorktreeRow(worktree: worktree, isMain: index == 0)
                             }
