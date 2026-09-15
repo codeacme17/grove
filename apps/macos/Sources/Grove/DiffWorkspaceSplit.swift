@@ -3,6 +3,7 @@ import SwiftUI
 
 struct DiffWorkspaceSplit<Content: View, Panel: View>: View {
     let isPresented: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ViewBuilder let content: () -> Content
     @ViewBuilder let panel: () -> Panel
     @State private var panelWidth: CGFloat = 520
@@ -18,13 +19,20 @@ struct DiffWorkspaceSplit<Content: View, Panel: View>: View {
                 content()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
-                if isPresented {
-                    HStack(spacing: 0) {
-                        resizeHandle(width: restingWidth, maximum: maximumWidth)
-                        panel().frame(width: width)
-                    }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                HStack(spacing: 0) {
+                    resizeHandle(width: restingWidth, maximum: maximumWidth)
+                    panel().frame(width: width)
+                        .transaction {
+                            $0.animation = nil
+                            $0.disablesAnimations = true
+                        }
                 }
+                .frame(width: isPresented ? width + 6 : 0, alignment: .leading)
+                .clipped()
+                .allowsHitTesting(isPresented)
+                .accessibilityHidden(!isPresented)
+                .transition(.identity)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: isPresented)
             }
         }
         .clipped()

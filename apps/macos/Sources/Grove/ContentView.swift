@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var switchingWorktree: BranchSwitchTarget?
     @State private var expandedDiffs: Set<String> = []
     @State private var diffSelection: FileDiffSelection?
+    @State private var isDiffPanelVisible = false
     @State private var diffRevision = 0
     @GestureState private var sidebarDrag: CGFloat = 0
     @GestureState private var isResizingSidebar = false
@@ -22,7 +23,7 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let showsSidebar = isSidebarVisible && (diffSelection == nil || geometry.size.width >= currentSidebarWidth + 706)
+            let showsSidebar = isSidebarVisible && (!isDiffPanelVisible || geometry.size.width >= currentSidebarWidth + 706)
             HStack(spacing: 0) {
                 HStack(spacing: 0) {
                     sidebar
@@ -34,25 +35,26 @@ struct ContentView: View {
                 .allowsHitTesting(showsSidebar)
                 .disabled(!showsSidebar)
                 .accessibilityHidden(!showsSidebar)
-                DiffWorkspaceSplit(isPresented: diffSelection != nil) {
+                DiffWorkspaceSplit(isPresented: isDiffPanelVisible) {
                     detail
+                        .transaction { $0.animation = nil }
                 } panel: {
                     if let diffSelection {
-                        FileDiffPanel(selection: diffSelection,
+                        FileDiffPanel(selection: diffSelection, isActive: isDiffPanelVisible,
                                       isBusy: model.busyWorktreePath != nil || model.isLoading,
                                       refreshedAt: model.updatedAt, revision: diffRevision) {
-                            self.diffSelection = nil
+                            isDiffPanelVisible = false
                         }
+                        .id(diffSelection.project.id)
                     }
                 }
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showsSidebar)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: diffSelection != nil)
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     Button {
-                        if !showsSidebar && diffSelection != nil && geometry.size.width < currentSidebarWidth + 706 {
-                            diffSelection = nil
+                        if !showsSidebar && isDiffPanelVisible && geometry.size.width < currentSidebarWidth + 706 {
+                            isDiffPanelVisible = false
                             isSidebarVisible = true
                         } else {
                             isSidebarVisible.toggle()
@@ -65,8 +67,11 @@ struct ContentView: View {
                 }
                 ToolbarItem {
                     if model.selectedProject != nil {
-                        Button(action: model.refresh) { Label("Refresh", systemImage: "arrow.clockwise") }
-                            .help("Refresh Worktrees (⌘R)")
+                        Button(action: model.refresh) {
+                            LoadingIndicator(isLoading: model.isLoading, label: "Refresh worktrees", idleIcon: "arrow.clockwise")
+                        }
+                        .disabled(model.isLoading)
+                        .help("Refresh Worktrees (⌘R)")
                     }
                 }
             }
@@ -74,16 +79,16 @@ struct ContentView: View {
         .background(colorScheme == .light ? GroveBrand.lightBackground : Color(nsColor: .windowBackgroundColor))
         .toolbarBackground(colorScheme == .light ? AnyShapeStyle(GroveBrand.lightBackground) : AnyShapeStyle(.bar), for: .windowToolbar)
         .toolbarBackground(colorScheme == .light ? .visible : .automatic, for: .windowToolbar)
-        .navigationTitle(model.selectedProject?.name ?? "Grove")
+        .navigationTitle(model.displayedProject?.name ?? "Grove")
         .onAppear { model.refresh() }
         .onChange(of: model.selection) {
-            diffSelection = nil
+            isDiffPanelVisible = false
             model.refresh()
         }
         .onChange(of: model.updatedAt) { _, date in
-            guard date != nil, let diffSelection else { return }
+            guard date != nil, isDiffPanelVisible, let diffSelection else { return }
             if !model.worktrees.contains(where: { $0.path == diffSelection.worktree.path && !$0.isBare && $0.pruneReason == nil }) {
-                self.diffSelection = nil
+                isDiffPanelVisible = false
             }
         }
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.refresh() } }
@@ -183,16 +188,20 @@ struct ContentView: View {
             } description: { Text(error).textSelection(.enabled) } actions: {
                 Button("Retry") { model.reloadProjects() }
             }
-        } else if let project = model.selectedProject {
+        } else if let project = model.displayedProject {
             VStack(alignment: .leading, spacing: 0) {
-                if model.isLoading {
-                    ProgressView("Reading worktrees…").frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = model.loadError {
+                if model.hasWorktreeSnapshot, let error = model.loadError {
+                    Text("Couldn’t load \(model.selectedProject?.name ?? project.name): \(error)").font(.caption).foregroundStyle(.red)
+                        .textSelection(.enabled).padding(12)
+                }
+                if !model.hasWorktreeSnapshot, let error = model.loadError {
                     ContentUnavailableView {
                         Label("Couldn’t read this project", systemImage: "exclamationmark.folder")
                     } description: {
                         Text(error).textSelection(.enabled)
                     } actions: { Button("Retry", action: model.refresh) }
+                } else if !model.hasWorktreeSnapshot {
+                    Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if model.worktrees.isEmpty {
                     ContentUnavailableView {
                         GroveEmptyStateLabel(title: "No registered worktrees")
@@ -209,12 +218,13 @@ struct ContentView: View {
                                                     else { expandedDiffs.remove(worktree.path) }
                                                 }
                                             ), selectedChange: Binding(
-                                                get: { diffSelection?.worktree.path == worktree.path ? diffSelection?.change : nil },
+                                                get: { isDiffPanelVisible && diffSelection?.worktree.path == worktree.path ? diffSelection?.change : nil },
                                                 set: { change in
                                                     if let change {
                                                         diffSelection = FileDiffSelection(change: change, worktree: worktree, project: project)
+                                                        isDiffPanelVisible = true
                                                     } else if diffSelection?.worktree.path == worktree.path {
-                                                        diffSelection = nil
+                                                        isDiffPanelVisible = false
                                                     }
                                                 }
                                             ), onDiffRefresh: { diffRevision += 1 }, onSwitchBranch: {
@@ -223,6 +233,8 @@ struct ContentView: View {
                             }
                         }
                         .padding(24)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: expandedDiffs)
+                        .disabled(model.isProjectTransitioning)
                     }
                 }
                 HStack(spacing: 8) {

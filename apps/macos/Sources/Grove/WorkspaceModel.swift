@@ -14,12 +14,29 @@ final class WorkspaceModel {
     private(set) var storageError: String?
     private(set) var loadError: String?
     private(set) var updatedAt: Date?
+    private var snapshotProjectID: String?
+    private var loadingProjectID: String?
+    private struct ProjectSnapshot {
+        let worktrees: [Worktree]
+        let updatedAt: Date
+    }
+    private var projectSnapshots: [String: ProjectSnapshot] = [:]
     var actionError: String?
     private(set) var busyWorktreePath: String?
     private(set) var worktreeMessages: [String: String] = [:]
+    private struct WorktreeKey: Hashable {
+        let project: String
+        let path: String
+    }
+    @ObservationIgnored private var changeModels: [WorktreeKey: WorktreeChangesModel] = [:]
+    @ObservationIgnored private var changeModelOrder: [WorktreeKey] = []
     @ObservationIgnored private let repository = GitRepository()
     @ObservationIgnored private let store: ProjectStore
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
+
+    var displayedProject: Project? { projects.first { $0.id == snapshotProjectID } ?? selectedProject }
+    var isProjectTransitioning: Bool { displayedProject?.id != selectedProject?.id }
+    var hasWorktreeSnapshot: Bool { snapshotProjectID == displayedProject?.id && updatedAt != nil }
 
     var selectedProject: Project? { projects.first { $0.id == selection } }
 
@@ -38,6 +55,18 @@ final class WorkspaceModel {
             storageReady = false
             storageError = "Could not read saved projects. Your saved file has been preserved.\n\(error.localizedDescription)"
         }
+    }
+
+    func changesModel(for worktree: Worktree, project: Project) -> WorktreeChangesModel {
+        let key = WorktreeKey(project: project.id, path: worktree.path)
+        if let cached = changeModels[key] { return cached }
+        let state = WorktreeChangesModel()
+        changeModels[key] = state
+        changeModelOrder.append(key)
+        if changeModelOrder.count > 16 {
+            changeModels[changeModelOrder.removeFirst()] = nil
+        }
+        return state
     }
 
     func chooseProject() {
@@ -81,6 +110,7 @@ final class WorkspaceModel {
             let next = projects.filter { $0.id != project.id }
             try store.save(next)
             projects = next
+            projectSnapshots[project.id] = nil
             if selection == project.id { selection = next.first?.id }
         } catch { actionError = "Could not save the project list.\n\(error.localizedDescription)" }
     }
@@ -135,28 +165,46 @@ final class WorkspaceModel {
         worktreeMessages[worktree.path] = nil
         defer {
             busyWorktreePath = nil
-            if selectedProject?.id == project.id { refresh() }
+            if selectedProject?.id == project.id {
+                refreshTask?.cancel()
+                isLoading = false
+                refresh()
+            }
         }
         worktreeMessages[worktree.path] = try await action()
     }
 
     func refresh() {
+        let project = selectedProject
+        if isLoading && loadingProjectID == project?.id { return }
         refreshTask?.cancel()
-        worktrees = []
-        updatedAt = nil
+        if project == nil || !projects.contains(where: { $0.id == snapshotProjectID }) {
+            worktrees = []
+            updatedAt = nil
+            snapshotProjectID = nil
+        }
+        if let project, snapshotProjectID != project.id, let snapshot = projectSnapshots[project.id] {
+            worktrees = snapshot.worktrees
+            updatedAt = snapshot.updatedAt
+            snapshotProjectID = project.id
+        }
         loadError = nil
         isLoading = false
-        guard let project = selectedProject else { return }
+        loadingProjectID = project?.id
+        guard let project else { return }
         isLoading = true
         refreshTask = Task {
             do {
                 let result = try await repository.worktrees(in: project)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, selection == project.id else { return }
                 worktrees = result
-                updatedAt = Date()
+                snapshotProjectID = project.id
+                let timestamp = Date()
+                updatedAt = timestamp
+                projectSnapshots[project.id] = ProjectSnapshot(worktrees: result, updatedAt: timestamp)
                 isLoading = false
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, selection == project.id else { return }
                 loadError = error.localizedDescription
                 isLoading = false
             }

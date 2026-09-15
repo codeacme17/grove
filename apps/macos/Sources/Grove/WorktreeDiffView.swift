@@ -6,17 +6,17 @@ struct WorktreeDiffView: View {
     let worktree: Worktree
     let project: Project
     let isBusy: Bool
+    let isExpanded: Bool
     let refreshedAt: Date?
-    @State private var changes: [WorktreeChange]?
-    @State private var errorMessage: String?
+    @Bindable var state: WorktreeChangesModel
     @Binding var selectedChange: WorktreeChange?
     let onRefresh: () -> Void
-    @State private var collapsedSections: Set<ChangeSection> = []
     @State private var reloadID = 0
 
     private struct Request: Equatable {
         let reloadID: Int
         let isBusy: Bool
+        let isExpanded: Bool
         let refreshedAt: Date?
     }
 
@@ -25,8 +25,8 @@ struct WorktreeDiffView: View {
             HStack {
                 Text("Local Changes").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                 Spacer()
-                Button { reloadID += 1 } label: {
-                    Image(systemName: "arrow.clockwise").frame(width: 24, height: 24)
+                Button { reloadID += 1; onRefresh() } label: {
+                    LoadingIndicator(isLoading: isExpanded && (state.isLoading || isBusy), label: "Refresh changes", idleIcon: "arrow.clockwise")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -34,52 +34,42 @@ struct WorktreeDiffView: View {
                 .accessibilityLabel("Refresh changes")
                 .disabled(isBusy)
             }
-            if isBusy {
-                Text("Waiting for the Git operation to finish…").foregroundStyle(.secondary)
-            } else if let changes {
+            if let errorMessage = state.errorMessage {
+                Text(errorMessage).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+            }
+            if let changes = state.changes {
                 if changes.isEmpty {
                     Text("No local changes").font(.callout).foregroundStyle(.secondary).padding(.vertical, 8)
                 } else {
                     fileList(changes)
                 }
-            } else if let errorMessage {
-                Text(errorMessage).font(.callout).foregroundStyle(.red).textSelection(.enabled)
-            } else {
-                ProgressView("Reading changes…").controlSize(.small).padding(.vertical, 8)
+            } else if state.errorMessage == nil {
+                Color.clear.frame(height: 28)
             }
         }
-        .task(id: Request(reloadID: reloadID, isBusy: isBusy, refreshedAt: refreshedAt)) {
-            changes = nil
-            errorMessage = nil
-            guard !isBusy else { return }
-            do {
-                let result = try await WorktreeRepository().changes(in: worktree, project: project)
-                try Task.checkCancellation()
-                changes = result
-                if let selectedChange {
-                    self.selectedChange = result.first { $0.path == selectedChange.path && $0.section == selectedChange.section }
-                    onRefresh()
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
-                errorMessage = error.localizedDescription
+        .task(id: Request(reloadID: reloadID, isBusy: isBusy, isExpanded: isExpanded, refreshedAt: refreshedAt)) {
+            guard isExpanded, !isBusy else { return }
+            await state.load(in: worktree, project: project)
+            guard !Task.isCancelled, state.errorMessage == nil, let changes = state.changes else { return }
+            if let selectedChange {
+                self.selectedChange = changes.first { $0.path == selectedChange.path && $0.section == selectedChange.section }
             }
         }
     }
 
     private func fileList(_ changes: [WorktreeChange]) -> some View {
         let groups = ChangeSection.allCases.filter { section in changes.contains { $0.section == section } }
-        let visibleRows = changes.filter { !collapsedSections.contains($0.section) }.count
+        let visibleRows = changes.filter { !state.collapsedSections.contains($0.section) }.count
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(groups, id: \.self) { section in
                     let files = changes.filter { $0.section == section }
-                    let isCollapsed = collapsedSections.contains(section)
+                    let isCollapsed = state.collapsedSections.contains(section)
                     Button {
                         if isCollapsed {
-                            collapsedSections.remove(section)
+                            state.collapsedSections.remove(section)
                         } else {
-                            collapsedSections.insert(section)
+                            state.collapsedSections.insert(section)
                         }
                     } label: {
                         HStack(spacing: 6) {

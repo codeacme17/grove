@@ -43,7 +43,7 @@ private struct GroveStatusMenu: View {
         Divider()
         if let project = model.selectedProject {
             Text(project.name)
-            Button(model.isLoading ? "Refreshing…" : "Refresh Worktrees", action: model.refresh)
+            Button("Refresh Worktrees", action: model.refresh)
                 .disabled(model.isLoading)
         } else {
             Text("No project selected")

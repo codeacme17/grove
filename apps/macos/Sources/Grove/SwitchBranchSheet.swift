@@ -22,9 +22,7 @@ struct SwitchBranchSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Switch Branch").font(.headline)
             Text(target.worktree.name).foregroundStyle(.secondary)
-            if isLoading {
-                ProgressView("Loading local branches…")
-            } else if branches.isEmpty {
+            if branches.isEmpty && !isLoading {
                 Text("No local branches available.").foregroundStyle(.secondary)
             } else {
                 Picker("Local branch", selection: $selectedBranch) {
@@ -34,19 +32,25 @@ struct SwitchBranchSheet: View {
                             .disabled(branch.checkedOutPath != nil && branch.checkedOutPath != target.worktree.path)
                     }
                 }
-                .disabled(isSwitching)
+                .disabled(isSwitching || isLoading)
             }
             if let errorMessage {
                 Text(errorMessage).font(.callout).foregroundStyle(.red).textSelection(.enabled)
             }
             HStack {
-                Button("Reload") { reloadID += 1 }
-                    .disabled(isLoading || isSwitching)
+                Button { reloadID += 1 } label: {
+                    HStack(spacing: 4) {
+                        Text("Reload")
+                        LoadingIndicator(isLoading: isLoading, label: "Loading local branches", idleIcon: "arrow.clockwise")
+                    }
+                }
+                .disabled(isLoading || isSwitching)
                 Spacer()
+                LoadingIndicator(isLoading: isSwitching, label: "Switching branch…")
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .disabled(isSwitching)
-                Button(isSwitching ? "Switching…" : "Switch") {
+                Button("Switch") {
                     isSwitching = true
                     errorMessage = nil
                     Task {
@@ -72,10 +76,11 @@ struct SwitchBranchSheet: View {
                 let result = try await WorktreeRepository().branches(in: target.worktree, project: target.project)
                 try Task.checkCancellation()
                 branches = result
-                selectedBranch = ""
+                if !result.contains(where: { $0.name == selectedBranch && $0.checkedOutPath == nil }) {
+                    selectedBranch = ""
+                }
             } catch {
                 guard !Task.isCancelled else { return }
-                branches = []
                 errorMessage = error.localizedDescription
             }
             isLoading = false
