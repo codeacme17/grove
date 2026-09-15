@@ -8,6 +8,7 @@ let package = Package(
     targets: [
         .target(name: "GroveCore"),
         .executableTarget(name: "Grove", dependencies: ["GroveCore"], resources: [.process("Resources")]),
-        .testTarget(name: "GroveCoreTests", dependencies: ["GroveCore"])
+        .testTarget(name: "GroveCoreTests", dependencies: ["GroveCore"]),
+        .testTarget(name: "GroveTests", dependencies: ["Grove", "GroveCore"])
     ]
 )

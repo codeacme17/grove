@@ -1,53 +1,55 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="apps/macos/Sources/Grove/Resources/AppIconDark.png">
-    <img src="apps/macos/Sources/Grove/Resources/AppIcon.png" alt="Grove logo" width="144" height="144">
+    <img src="apps/macos/Sources/Grove/Resources/AppIcon.png" alt="Grove logo" width="112" height="112">
   </picture>
 </p>
 
-# Grove
+<h1 align="center">Grove</h1>
 
-A home for your Git worktrees, with native desktop apps for each operating system.
+<p align="center">A home for your Git worktrees.</p>
 
-## Platforms
+<br>
 
-| Platform | Status | Implementation |
-| --- | --- | --- |
-| [macOS](apps/macos/README.md) | Working MVP | SwiftUI, AppKit, Swift 6; macOS 14+ |
-| [Windows](apps/windows/README.md) | Planned | Native Windows framework to be selected |
+## Why Grove
 
-## Repository layout
+Vibe coding makes it easy to hand several tasks to AI coding agents at once. As agents work in parallel, they create Git worktrees to keep their changes isolated. Those worktrees quickly multiply across projects and folders, making it hard to see what exists, which branch each worktree uses, and what has changed—all at a glance.
 
-```text
-apps/
-  macos/
-    Package.swift
-    Sources/
-      Grove/          # macOS interface and workspace state
-      GroveCore/      # Swift Git integration and persistence
-    Tests/
-    scripts/          # macOS build, test, and diagnostic tools
-  windows/            # Future native Windows application
-docs/                # Product requirements and project documentation
-Makefile              # Root shortcuts for platform commands
-```
+Grove gives you a visual home for those worktrees. It brings your projects, branches, paths, and local changes together in one native desktop app, so you can navigate and manage the workspaces your agents create. Inspect diffs, pull updates, and switch branches without hunting through folders and terminals. Keep projects in a sidebar or arrange them as tabs across the top—whichever fits the way you work.
 
-Each application owns its source, tests, dependencies, build scripts, and generated artifacts. Product requirements and documentation live in `docs/`. GroveCore currently belongs to the macOS application; Windows will have its own native implementation. Add shared code or fixtures only when both applications actually consume them.
+**Less time finding your work. More time doing it.**
 
-## macOS quick start
+## Installation
 
-Requires macOS 14+, a Swift 6 toolchain (Xcode or compatible Command Line Tools), and Git. From the repository root:
+Grove runs on **macOS 14 or later**, on **Apple Silicon and Intel** Macs. Git must be installed and available on your Mac.
+
+1. Download [Grove for macOS](https://github.com/codeacme17/grove/releases/latest).
+2. Unzip the download and move **Grove.app** to your Applications folder.
+3. Open Grove, choose **Add Project…**, and select a Git repository or any of its worktrees. Grove discovers the rest automatically.
+
+The initial release is ad-hoc signed and has not been notarized by Apple. macOS may block the downloaded app; see the release notes for details. You can also build it locally:
+
+<details>
+<summary>Build and install from source</summary>
+
+Requires a **Swift 6 toolchain** (Xcode or compatible Command Line Tools) and **Git**.
 
 ```sh
-make test-macos
+git clone https://github.com/codeacme17/grove.git
+cd grove
 make build-macos
-make run-macos
+
+mkdir -p "$HOME/Applications"
+ditto apps/macos/dist/Grove.app "$HOME/Applications/Grove.app"
+open "$HOME/Applications/Grove.app"
 ```
 
-The app is built at `apps/macos/dist/Grove.app`. For a debug build, use `make build-macos CONFIGURATION=debug`. Open `apps/macos/Package.swift` in Xcode for development. See the [macOS guide](apps/macos/README.md) for platform details.
+The app is installed in your user Applications folder.
 
-## MVP
+</details>
 
-Add a local Git project and browse all its registered worktrees, including linked worktrees outside the project folder, detached HEADs, and stale registrations. Projects persist between launches. Repository operations are read-only.
+For development commands and build details, see the [macOS guide](apps/macos/README.md).
 
-See the [MVP specification](docs/mvp.md) for acceptance criteria. Windows implementation is planned and is not part of this MVP.
+---
+
+<p align="center">Licensed under the <a href="LICENSE">Apache License, Version 2.0</a>.</p>

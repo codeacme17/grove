@@ -16,9 +16,11 @@ A native macOS home for your Git worktrees. Built with SwiftUI and Swift.
 - See branch names, detached commits, locks, stale registrations, and full paths.
 - Refresh with **⌘R** or when returning to the app.
 - Save projects between launches. **Remove from Grove** only removes a saved entry.
+- Right-click the project navigation and choose **Switch to Top** for horizontal project tabs, or **Switch to Sidebar** to return. The layout persists between launches; tabs scroll horizontally when needed.
+- Drag sidebar projects or top tabs to reorder them. Right-click a project to rename or remove it; names and order persist between launches. Renaming changes its display name in Grove, not its folder or Git identity.
 - Copy worktree paths or reveal them in Finder.
 
-Grove does not modify repositories. A worktree's presence does not indicate that an agent is running.
+Worktree cards also support **Pull**, **Switch Branch…**, and **Show Diff**. Pull and branch switching require a clean working tree; diffs are read-only. See [worktree actions](../../docs/worktree-actions.md). A worktree's presence does not indicate that an agent is running.
 
 ## Build and run
 
@@ -36,15 +38,22 @@ For a faster development build, use `bash scripts/build-app.sh debug`. Open `Pac
 
 The test script also supports Command Line Tools installations that bundle Swift Testing but do not automatically add its framework and macro search paths. With full Xcode selected, it delegates directly to `swift test`.
 
-The bundle targets the machine's architecture and is ad-hoc signed for local use. A public release needs Developer ID signing and notarization. This initial build is not an App Sandbox or Mac App Store build; Git needs access to worktrees outside the selected folder.
+The default build targets the machine's architecture and uses ad-hoc signing. Developer ID signing and Apple notarization are not configured yet. This initial build is not an App Sandbox or Mac App Store build; Git needs access to worktrees outside the selected folder.
+
+Run `make release-macos` from the repository root to build both Apple Silicon and Intel executables, combine them into a universal app, and create `Grove-<version>-macOS-universal.zip` with `SHA256SUMS` in `apps/macos/dist`. The app includes the Apache 2.0 license and uses the same ad-hoc signing.
+
+Menu-bar access: [open, add, refresh, and quit](../../docs/menu-bar.md).
+
+Appearance controls: [System, Light, and Dark](../../docs/appearance.md).
 
 ## Design
 
 - `Sources/Grove`: SwiftUI interface and observable workspace state.
 - `Sources/GroveCore`: Git process execution, repository identity, worktree parsing, and persistence.
 - `Tests/GroveCoreTests`: real temporary Git repositories, parser, persistence, timeout, and cancellation tests.
+- `Tests/GroveTests`: project ordering, renaming, removal, and persistence failure tests for workspace state.
 
-Project identity is the canonical common Git directory. Worktree data comes from `git worktree list --porcelain -z`; paths are passed as process arguments, never interpolated into shell commands. Git operations run off the UI thread, have a 15-second timeout, and are cancelled when superseded. Temporary output files avoid pipe-buffer deadlocks.
+Project identity is the canonical common Git directory. Worktree data comes from `git worktree list --porcelain -z`; paths are passed as process arguments, never interpolated into shell commands. Git operations run off the UI thread, with a 15-second command timeout (120 seconds for Pull). Superseded reads are cancelled; user-requested writes run to completion or timeout. Temporary output files avoid pipe-buffer deadlocks.
 
 Projects are stored in `~/Library/Application Support/Grove/projects.json`. A damaged file is preserved and reported instead of silently overwritten. Restore valid JSON and use **Retry** if this occurs.
 

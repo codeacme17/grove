@@ -5,61 +5,205 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var model: WorkspaceModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("projectNavigationPlacement") private var navigationPlacement: ProjectNavigationPlacement = .sidebar
+    @State private var isSidebarVisible = true
+    @State private var sidebarWidth: CGFloat = 240
+    @State private var isHoveringSidebarHandle = false
+    @State private var renamingProject: Project?
+    @State private var switchingWorktree: BranchSwitchTarget?
+    @State private var expandedDiffs: Set<String> = []
+    @State private var diffSelection: FileDiffSelection?
+    @State private var isDiffPanelVisible = false
+    @State private var diffRevision = 0
+    @GestureState private var sidebarDrag: CGFloat = 0
+    @GestureState private var isResizingSidebar = false
+
+    private var currentSidebarWidth: CGFloat { min(320, max(220, sidebarWidth + sidebarDrag)) }
 
     var body: some View {
-        NavigationSplitView {
+        GeometryReader { geometry in
+            let showsSidebar = navigationPlacement == .sidebar && isSidebarVisible && (!isDiffPanelVisible || geometry.size.width >= currentSidebarWidth + 706)
             VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    GroveLogo()
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Grove").font(.title2.weight(.semibold))
-                        Text("A home for your worktrees").font(.caption).foregroundStyle(.secondary)
+                ProjectTabBar(model: model, isVisible: navigationPlacement == .top, onRename: { renamingProject = $0 },
+                              onSwitchToSidebar: { setNavigationPlacement(.sidebar, availableWidth: geometry.size.width) })
+                    .frame(height: navigationPlacement == .top ? 48 : 0, alignment: .top)
+                    .clipped()
+                    .allowsHitTesting(navigationPlacement == .top)
+                    .disabled(navigationPlacement != .top)
+                    .accessibilityHidden(navigationPlacement != .top)
+                HStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        sidebar
+                            .frame(width: currentSidebarWidth)
+                        sidebarResizeHandle
                     }
-                    Spacer()
-                }
-                .padding(20)
-                List(selection: $model.selection) {
-                    Section("Projects") {
-                        ForEach(model.projects) { project in
-                            Label(project.name, systemImage: "folder")
-                                .lineLimit(1)
-                                .help(project.gitDirectory)
-                                .tag(project.id)
-                                .contextMenu {
-                                    Button("Remove from Grove", role: .destructive) { model.remove(project) }
-                                }
+                    .frame(width: showsSidebar ? currentSidebarWidth + 6 : 0, alignment: .trailing)
+                    .clipped()
+                    .allowsHitTesting(showsSidebar)
+                    .disabled(!showsSidebar)
+                    .accessibilityHidden(!showsSidebar)
+                    DiffWorkspaceSplit(isPresented: isDiffPanelVisible) {
+                        detail
+                            .transaction { $0.animation = nil }
+                    } panel: {
+                        if let diffSelection {
+                            FileDiffPanel(selection: diffSelection, isActive: isDiffPanelVisible,
+                                          isBusy: model.busyWorktreePath != nil || model.isLoading,
+                                          refreshedAt: model.updatedAt, revision: diffRevision) {
+                                isDiffPanelVisible = false
+                            }
+                            .id(diffSelection.project.id)
                         }
                     }
                 }
-                .listStyle(.sidebar)
-                Divider()
-                Button(action: model.chooseProject) {
-                    Label(model.isAdding ? "Adding Project…" : "Add Project…", systemImage: "plus")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .padding(16)
-                .disabled(model.isAdding || !model.storageReady)
             }
-            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
-        } detail: {
-            detail
-                .navigationTitle(model.selectedProject?.name ?? "Grove")
-                .toolbar {
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showsSidebar)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: navigationPlacement)
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        if navigationPlacement == .top {
+                            setNavigationPlacement(.sidebar, availableWidth: geometry.size.width)
+                        } else if !showsSidebar && isDiffPanelVisible && geometry.size.width < currentSidebarWidth + 706 {
+                            isDiffPanelVisible = false
+                            isSidebarVisible = true
+                        } else {
+                            isSidebarVisible.toggle()
+                        }
+                    } label: {
+                        Label(navigationPlacement == .top ? "Switch to Sidebar" : "Toggle Sidebar", systemImage: "sidebar.left")
+                    }
+                    .help(navigationPlacement == .top ? "Switch to Sidebar" : (showsSidebar ? "Hide Sidebar" : "Show Sidebar"))
+                    .keyboardShortcut("s", modifiers: [.command, .control])
+                }
+                ToolbarItem {
                     if model.selectedProject != nil {
-                        Button(action: model.refresh) { Label("Refresh", systemImage: "arrow.clockwise") }
-                            .help("Refresh Worktrees (⌘R)")
+                        Button(action: model.refresh) {
+                            LoadingIndicator(isLoading: model.isLoading, label: "Refresh worktrees", idleIcon: "arrow.clockwise")
+                        }
+                        .disabled(model.isLoading)
+                        .help("Refresh Worktrees (⌘R)")
                     }
                 }
+            }
         }
+        .background(colorScheme == .light ? GroveBrand.lightBackground : Color(nsColor: .windowBackgroundColor))
+        .toolbarBackground(colorScheme == .light ? AnyShapeStyle(GroveBrand.lightBackground) : AnyShapeStyle(.bar), for: .windowToolbar)
+        .toolbarBackground(colorScheme == .light ? .visible : .automatic, for: .windowToolbar)
+        .navigationTitle(model.displayedProject?.name ?? "Grove")
         .onAppear { model.refresh() }
-        .onChange(of: model.selection) { model.refresh() }
+        .onChange(of: model.selection) {
+            isDiffPanelVisible = false
+            model.refresh()
+        }
+        .onChange(of: model.updatedAt) { _, date in
+            guard date != nil, isDiffPanelVisible, let diffSelection else { return }
+            if !model.worktrees.contains(where: { $0.path == diffSelection.worktree.path && !$0.isBare && $0.pruneReason == nil }) {
+                isDiffPanelVisible = false
+            }
+        }
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.refresh() } }
+        .sheet(item: $renamingProject) { project in
+            RenameProjectSheet(project: project) { name in
+                try model.rename(project, to: name)
+            }
+        }
+        .sheet(item: $switchingWorktree) { target in
+            SwitchBranchSheet(target: target, model: model)
+        }
         .alert("Grove", isPresented: Binding(
             get: { model.actionError != nil }, set: { if !$0 { model.actionError = nil } }
         )) { Button("OK") { model.actionError = nil } } message: {
             Text(model.actionError ?? "")
         }
+    }
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            List(selection: $model.selection) {
+                Section("Projects") {
+                    ForEach(model.projects) { project in
+                        Label(project.name, systemImage: "folder")
+                            .lineLimit(1)
+                            .help(project.gitDirectory)
+                            .tag(project.id)
+                            .contextMenu {
+                                Button("Rename…") { renamingProject = project }
+                                Button("Remove from Grove", role: .destructive) { model.remove(project) }
+                                Divider()
+                                switchToTopButton
+                            }
+                    }
+                    .onMove(perform: model.moveProjects)
+                }
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .contextMenu { switchToTopButton }
+            Button(action: model.chooseProject) {
+                Label(model.isAdding ? "Adding Project…" : "Add Project…", systemImage: "plus")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .padding(16)
+            .disabled(model.isAdding || !model.storageReady)
+        }
+        .contentShape(Rectangle())
+        .contextMenu { switchToTopButton }
+    }
+
+    private var switchToTopButton: some View {
+        Button("Switch to Top", systemImage: "rectangle.topthird.inset.filled") {
+            setNavigationPlacement(.top)
+        }
+    }
+
+    private func setNavigationPlacement(_ placement: ProjectNavigationPlacement, availableWidth: CGFloat? = nil) {
+        navigationPlacement = placement
+        if placement == .sidebar {
+            isSidebarVisible = true
+            if let availableWidth, availableWidth < currentSidebarWidth + 706 {
+                isDiffPanelVisible = false
+            }
+        }
+    }
+
+    private var sidebarResizeHandle: some View {
+        Color.clear
+            .frame(width: 6)
+            .overlay {
+                Rectangle()
+                    .fill(.secondary.opacity(0.35))
+                    .frame(width: 1)
+                    .opacity(isHoveringSidebarHandle || isResizingSidebar ? 1 : 0)
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.12),
+                               value: isHoveringSidebarHandle || isResizingSidebar)
+                    .allowsHitTesting(false)
+            }
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                isHoveringSidebarHandle = hovering
+                if hovering { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
+            }
+            .gesture(
+                DragGesture(coordinateSpace: .global)
+                    .updating($sidebarDrag) { value, state, _ in state = value.translation.width }
+                    .updating($isResizingSidebar) { _, state, _ in state = true }
+                    .onEnded { value in
+                        sidebarWidth = min(320, max(220, sidebarWidth + value.translation.width))
+                    }
+            )
+            .accessibilityLabel("Sidebar width")
+            .accessibilityValue("\(Int(sidebarWidth)) points")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: sidebarWidth = min(320, sidebarWidth + 20)
+                case .decrement: sidebarWidth = max(220, sidebarWidth - 20)
+                @unknown default: break
+                }
+            }
     }
 
     @ViewBuilder private var detail: some View {
@@ -69,30 +213,20 @@ struct ContentView: View {
             } description: { Text(error).textSelection(.enabled) } actions: {
                 Button("Retry") { model.reloadProjects() }
             }
-        } else if let project = model.selectedProject {
+        } else if let project = model.displayedProject {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Worktrees").font(.largeTitle.weight(.semibold))
-                        Text("Every working tree, together.").foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if model.updatedAt != nil {
-                        Text("\(model.worktrees.count)")
-                            .font(.title2.monospacedDigit()).foregroundStyle(.secondary)
-                            .padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
-                    }
+                if model.hasWorktreeSnapshot, let error = model.loadError {
+                    Text("Couldn’t load \(model.selectedProject?.name ?? project.name): \(error)").font(.caption).foregroundStyle(.red)
+                        .textSelection(.enabled).padding(12)
                 }
-                .padding(24)
-                Divider()
-                if model.isLoading {
-                    ProgressView("Reading worktrees…").frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = model.loadError {
+                if !model.hasWorktreeSnapshot, let error = model.loadError {
                     ContentUnavailableView {
                         Label("Couldn’t read this project", systemImage: "exclamationmark.folder")
                     } description: {
                         Text(error).textSelection(.enabled)
                     } actions: { Button("Retry", action: model.refresh) }
+                } else if !model.hasWorktreeSnapshot {
+                    Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if model.worktrees.isEmpty {
                     ContentUnavailableView {
                         GroveEmptyStateLabel(title: "No registered worktrees")
@@ -101,19 +235,41 @@ struct ContentView: View {
                     ScrollView {
                         VStack(spacing: 12) {
                             ForEach(Array(model.worktrees.enumerated()), id: \.element.id) { index, worktree in
-                                WorktreeRow(worktree: worktree, isMain: index == 0)
+                                WorktreeRow(worktree: worktree, project: project, isMain: index == 0,
+                                            model: model, isDiffExpanded: Binding(
+                                                get: { expandedDiffs.contains(worktree.path) },
+                                                set: { expanded in
+                                                    if expanded { expandedDiffs.insert(worktree.path) }
+                                                    else { expandedDiffs.remove(worktree.path) }
+                                                }
+                                            ), selectedChange: Binding(
+                                                get: { isDiffPanelVisible && diffSelection?.worktree.path == worktree.path ? diffSelection?.change : nil },
+                                                set: { change in
+                                                    if let change {
+                                                        diffSelection = FileDiffSelection(change: change, worktree: worktree, project: project)
+                                                        isDiffPanelVisible = true
+                                                    } else if diffSelection?.worktree.path == worktree.path {
+                                                        isDiffPanelVisible = false
+                                                    }
+                                                }
+                                            ), onDiffRefresh: { diffRevision += 1 }, onSwitchBranch: {
+                                                switchingWorktree = BranchSwitchTarget(worktree: worktree, project: project)
+                                            })
                             }
                         }
                         .padding(24)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: expandedDiffs)
+                        .disabled(model.isProjectTransitioning)
                     }
                 }
-                Divider()
                 HStack(spacing: 8) {
                     Image(systemName: "internaldrive")
                     Text(project.gitDirectory).lineLimit(1).truncationMode(.middle).help(project.gitDirectory)
                     Spacer(minLength: 12)
-                    if let date = model.updatedAt {
-                        Text("Updated \(date.formatted(date: .omitted, time: .shortened))")
+                    if model.updatedAt != nil {
+                        Text("\(model.worktrees.count) \(model.worktrees.count == 1 ? "worktree" : "worktrees")")
+                            .monospacedDigit()
+                            .fixedSize()
                     }
                 }
                 .font(.caption).foregroundStyle(.secondary).padding(12)
@@ -129,64 +285,5 @@ struct ContentView: View {
                     .disabled(model.isAdding || !model.storageReady)
             }
         }
-    }
-}
-
-private struct WorktreeRow: View {
-    let worktree: Worktree
-    let isMain: Bool
-    private var exists: Bool { FileManager.default.fileExists(atPath: worktree.path) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: isMain ? "house" : "arrow.triangle.branch")
-                    .font(.title3).foregroundStyle(.green)
-                    .frame(width: 36, height: 36)
-                    .background(.green.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack {
-                        Text(worktree.name).font(.headline).textSelection(.enabled)
-                        if isMain && !worktree.isBare { badge("Main") }
-                        if worktree.isBare { badge("Bare") }
-                    }
-                    Label(worktree.revision, systemImage: worktree.isDetached ? "circle.dotted" : "arrow.triangle.branch")
-                        .font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-                Spacer(minLength: 0)
-                Menu {
-                    Button("Copy Path") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(worktree.path, forType: .string)
-                    }
-                    Button("Reveal in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: worktree.path)])
-                    }.disabled(!exists)
-                } label: { Image(systemName: "ellipsis") }
-                    .menuStyle(.borderlessButton).fixedSize()
-                    .accessibilityLabel("Actions for \(worktree.name)")
-            }
-            Text(worktree.path).font(.caption).foregroundStyle(.secondary)
-                .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-            if worktree.isDetached || worktree.lockReason != nil || worktree.pruneReason != nil || !exists {
-                HStack(spacing: 8) {
-                    if worktree.isDetached { badge("Detached HEAD") }
-                    if let reason = worktree.lockReason { badge("Locked").help(reason.isEmpty ? "Locked by Git" : reason) }
-                    if let reason = worktree.pruneReason { badge("Prunable").help(reason) }
-                    if !exists { badge("Path unavailable") }
-                }
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
-    }
-
-    private func badge(_ text: String) -> some View {
-        Text(text).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
-            .padding(.horizontal, 7).padding(.vertical, 3)
-            .background(.quaternary, in: Capsule())
     }
 }

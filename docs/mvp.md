@@ -12,7 +12,7 @@ Grove is a native macOS app for seeing every registered Git worktree in a projec
 - Show each worktree's folder name, full path, branch or short commit, and relevant Git flags. A registered worktree is not evidence of a running agent.
 - Refresh on request and when the app becomes active. Show loading, empty, and actionable error states without presenting old data as current.
 - Keep Git work off the main thread. Bound command duration and support cancellation.
-- Use the installed Git CLI. Do not mutate repositories or scan arbitrary folders for repositories.
+- Use the installed Git CLI without scanning arbitrary folders for repositories. Explicit Pull and branch-switch actions may update the selected worktree, as described in [worktree actions](worktree-actions.md).
 - Provide a repeatable local build that produces a launchable macOS app bundle.
 
 ## Verification
@@ -21,4 +21,4 @@ Use temporary real repositories to verify linked worktree discovery, deduplicati
 
 ## Out of scope
 
-Worktree creation/deletion, commits, diffs, agent activity detection, remote hosting integration, Windows implementation, App Store distribution, signing and notarization for distribution.
+Worktree creation/deletion, commits, staging changes, agent activity detection, remote hosting integration, Windows implementation, App Store distribution, signing and notarization for distribution.

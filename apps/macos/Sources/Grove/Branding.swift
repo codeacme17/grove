@@ -3,6 +3,9 @@ import SwiftUI
 
 @MainActor
 enum GroveBrand {
+    // Dominant sRGB background color sampled from AppIcon.png (#F7F5F1).
+    static let lightBackground = Color(.sRGB, red: 247 / 255, green: 245 / 255, blue: 241 / 255)
+
     static let bundle: Bundle = {
         if let url = Bundle.main.url(forResource: "Grove_Grove", withExtension: "bundle"),
            let packaged = Bundle(url: url) {
