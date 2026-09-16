@@ -49,11 +49,7 @@ if [[ -n "$notary_profile" ]]; then
     spctl --assess --type execute --verbose "$app"
 fi
 
-mkdir "$staging/image"
-ditto "$app" "$staging/image/Grove.app"
-ln -s /Applications "$staging/image/Applications"
-hdiutil create -volname "Grove" -srcfolder "$staging/image" \
-    -format UDZO -fs HFS+ -ov "dist/$disk_image"
+bash scripts/build-dmg.sh "$app" "dist/$disk_image"
 
 if [[ "$signing_identity" != - ]]; then
     codesign --force --sign "$signing_identity" --timestamp "dist/$disk_image"
