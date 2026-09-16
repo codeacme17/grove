@@ -41,5 +41,10 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-codesign --force --sign - "$app"
+signing_identity="${GROVE_SIGNING_IDENTITY:--}"
+if [[ "$signing_identity" == - ]]; then
+    codesign --force --sign - "$app"
+else
+    codesign --force --sign "$signing_identity" --options runtime --timestamp "$app"
+fi
 echo "Built $PWD/$app"
