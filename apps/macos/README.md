@@ -26,7 +26,7 @@ Worktree cards also support **Pull**, **Switch Branch…**, and **Show Diff**. P
 
 Run the following commands from `apps/macos`. From the repository root, use `make test-macos`, `make build-macos`, or `make run-macos`.
 
-Requires macOS 14+, Swift 6 toolchain (Xcode or compatible Command Line Tools), and Git. The MVP has no third-party dependencies.
+Requires macOS 14+, Swift 6 toolchain (Xcode or compatible Command Line Tools), and Git. The app has no third-party runtime dependencies.
 
 ```sh
 bash scripts/test.sh
@@ -40,7 +40,7 @@ The test script also supports Command Line Tools installations that bundle Swift
 
 The default build targets the machine's architecture and uses ad-hoc signing. Set `GROVE_SIGNING_IDENTITY` to a Developer ID Application identity to sign with hardened runtime and a secure timestamp. This initial build is not an App Sandbox or Mac App Store build; Git needs access to worktrees outside the selected folder.
 
-Run `make release-macos` from the repository root to build both Apple Silicon and Intel executables, combine them into a universal app, and create a DMG, ZIP, and `SHA256SUMS` in `apps/macos/dist`. The DMG contains Grove and an Applications shortcut for drag-and-drop installation. The app includes the Apache 2.0 license. See [macOS releases](../../docs/macos-release.md) for signing and notarization setup.
+Run `make release-macos` from the repository root to build both Apple Silicon and Intel executables, combine them into a universal app, and create a DMG, ZIP, and `SHA256SUMS` in `apps/macos/dist`. DMG packaging also requires Python 3.9+ and installs its pinned build tools in an isolated local environment. The DMG provides a branded drag-to-Applications window and uses the Grove logo as its volume icon. The app includes the Apache 2.0 license. See [macOS releases](../../docs/macos-release.md) for signing and notarization setup.
 
 Menu-bar access: [open, add, refresh, and quit](../../docs/menu-bar.md).
 
