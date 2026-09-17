@@ -9,6 +9,10 @@ final class WorktreeChangesModel {
     var collapsedSections: Set<ChangeSection> = []
     private var requestID = 0
 
+    var changedFileCount: Int? {
+        changes.map { Set($0.map(\.path)).count }
+    }
+
     func load(in worktree: Worktree, project: Project) async {
         requestID += 1
         let request = requestID

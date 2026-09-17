@@ -4,13 +4,14 @@ import SwiftUI
 
 struct WorktreeRow: View {
     @State private var hasOpenedDiff = false
-    @State private var isPreparingDiff = false
+    @State private var changesReloadID = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     let worktree: Worktree
     let project: Project
     let isMain: Bool
     let model: WorkspaceModel
+    @State var changesState: WorktreeChangesModel
     @Binding var isDiffExpanded: Bool
     @Binding var selectedChange: WorktreeChange?
     let onDiffRefresh: () -> Void
@@ -20,6 +21,14 @@ struct WorktreeRow: View {
     let onPathCopied: () -> Void
     private var exists: Bool { FileManager.default.fileExists(atPath: worktree.path) }
     private var canOperate: Bool { !worktree.isBare && exists && worktree.pruneReason == nil }
+    private var isBusy: Bool { model.busyWorktreePath != nil || model.isLoading || model.isProjectTransitioning }
+
+    private struct ChangesRequest: Equatable {
+        let reloadID: Int
+        let refreshedAt: Date?
+        let isBusy: Bool
+        let canOperate: Bool
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -102,26 +111,20 @@ struct WorktreeRow: View {
                         .help("Reveal in Finder")
                     }
                     Spacer(minLength: 0)
-                    if canOperate {
-                        Button {
-                            if isDiffExpanded {
-                                isDiffExpanded = false
-                            } else if model.changesModel(for: worktree, project: project).changes != nil {
-                                isDiffExpanded = true
-                            } else {
-                                isPreparingDiff.toggle()
-                            }
-                        } label: {
+                    if canOperate, let count = changesState.changedFileCount, count > 0 {
+                        Button { isDiffExpanded.toggle() } label: {
                             HStack(spacing: 4) {
-                                LoadingIndicator(isLoading: isPreparingDiff, label: "Show changes",
+                                LoadingIndicator(isLoading: changesState.isLoading, label: "Refresh changes",
                                                  idleIcon: isDiffExpanded ? "chevron.up" : "chevron.down")
                                 Text(isDiffExpanded ? "Hide Diff" : "Show Diff")
+                                Text("(\(count))").monospacedDigit()
                             }
                         }
-                        .disabled(model.busyWorktreePath != nil)
+                        .disabled(isBusy)
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
                         .fixedSize()
+                        .accessibilityLabel("\(isDiffExpanded ? "Hide" : "Show") diff, \(count) changed files")
                     }
                 }
                 .font(.caption)
@@ -134,6 +137,15 @@ struct WorktreeRow: View {
                     }
                 }
                 if canOperate {
+                    if !isDiffExpanded, let error = changesState.errorMessage {
+                        HStack {
+                            Text("Could not read changes: \(error)")
+                                .foregroundStyle(.red).textSelection(.enabled)
+                            Button("Retry") { changesReloadID += 1 }
+                                .disabled(isBusy)
+                        }
+                        .font(.caption)
+                    }
                     if model.busyWorktreePath != worktree.path, let message = model.worktreeMessages[worktree.path] {
                         Text(message).font(.caption).foregroundStyle(.secondary)
                     }
@@ -141,12 +153,11 @@ struct WorktreeRow: View {
             }
             .transaction { $0.animation = nil }
             if canOperate && (hasOpenedDiff || isDiffExpanded) {
-                WorktreeDiffView(worktree: worktree, project: project,
-                                 isBusy: model.busyWorktreePath != nil || model.isLoading,
-                                 isExpanded: isDiffExpanded,
-                                 refreshedAt: model.updatedAt,
-                                 state: model.changesModel(for: worktree, project: project),
-                                 selectedChange: $selectedChange, onRefresh: onDiffRefresh)
+                WorktreeDiffView(isBusy: isBusy, state: changesState,
+                                 selectedChange: $selectedChange, onRefresh: {
+                                     changesReloadID += 1
+                                     onDiffRefresh()
+                                 })
                     .fixedSize(horizontal: false, vertical: true)
                     .transaction {
                         $0.animation = nil
@@ -160,12 +171,15 @@ struct WorktreeRow: View {
                     .transition(.asymmetric(insertion: .opacity, removal: .identity))
             }
         }
-        .task(id: isPreparingDiff) {
-            guard isPreparingDiff else { return }
-            await model.changesModel(for: worktree, project: project).load(in: worktree, project: project)
-            guard !Task.isCancelled else { return }
-            isPreparingDiff = false
-            isDiffExpanded = true
+        .task(id: ChangesRequest(reloadID: changesReloadID, refreshedAt: model.updatedAt,
+                                 isBusy: isBusy, canOperate: canOperate)) {
+            guard canOperate, !isBusy else { return }
+            await changesState.load(in: worktree, project: project)
+            guard !Task.isCancelled, changesState.errorMessage == nil, let changes = changesState.changes else { return }
+            if let selectedChange {
+                self.selectedChange = changes.first { $0.path == selectedChange.path && $0.section == selectedChange.section }
+            }
+            if changes.isEmpty { isDiffExpanded = false }
         }
         .onChange(of: isDiffExpanded, initial: true) { _, expanded in
             if expanded { hasOpenedDiff = true }

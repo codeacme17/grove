@@ -271,7 +271,8 @@ struct ContentView: View {
                         VStack(spacing: 12) {
                             ForEach(Array(model.worktrees.enumerated()), id: \.element.id) { index, worktree in
                                 WorktreeRow(worktree: worktree, project: project, isMain: index == 0,
-                                            model: model, isDiffExpanded: Binding(
+                                            model: model, changesState: model.changesModel(for: worktree, project: project),
+                                            isDiffExpanded: Binding(
                                                 get: { expandedDiffs.contains(worktree.path) },
                                                 set: { expanded in
                                                     if expanded { expandedDiffs.insert(worktree.path) }

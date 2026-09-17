@@ -3,30 +3,18 @@ import GroveCore
 import SwiftUI
 
 struct WorktreeDiffView: View {
-    let worktree: Worktree
-    let project: Project
     let isBusy: Bool
-    let isExpanded: Bool
-    let refreshedAt: Date?
     @Bindable var state: WorktreeChangesModel
     @Binding var selectedChange: WorktreeChange?
     let onRefresh: () -> Void
-    @State private var reloadID = 0
-
-    private struct Request: Equatable {
-        let reloadID: Int
-        let isBusy: Bool
-        let isExpanded: Bool
-        let refreshedAt: Date?
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Local Changes").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                 Spacer()
-                Button { reloadID += 1; onRefresh() } label: {
-                    LoadingIndicator(isLoading: isExpanded && (state.isLoading || isBusy), label: "Refresh changes", idleIcon: "arrow.clockwise")
+                Button(action: onRefresh) {
+                    LoadingIndicator(isLoading: state.isLoading || isBusy, label: "Refresh changes", idleIcon: "arrow.clockwise")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -45,14 +33,6 @@ struct WorktreeDiffView: View {
                 }
             } else if state.errorMessage == nil {
                 Color.clear.frame(height: 28)
-            }
-        }
-        .task(id: Request(reloadID: reloadID, isBusy: isBusy, isExpanded: isExpanded, refreshedAt: refreshedAt)) {
-            guard isExpanded, !isBusy else { return }
-            await state.load(in: worktree, project: project)
-            guard !Task.isCancelled, state.errorMessage == nil, let changes = state.changes else { return }
-            if let selectedChange {
-                self.selectedChange = changes.first { $0.path == selectedChange.path && $0.section == selectedChange.section }
             }
         }
     }
