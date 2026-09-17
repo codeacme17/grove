@@ -1,6 +1,8 @@
 # Worktree actions
 
-Each available, non-bare worktree card provides a Pull icon in its top-right corner. Click the branch name below the worktree title to switch branches; the path remains selectable text. Show Diff sits at the right of the path row. These extend the original read-only browser. Copy Path and Reveal in Finder remain in the card menu.
+Each available, non-bare worktree card provides a Pull icon in its top-right corner. Click the branch name below the worktree title to switch branches. Click the path to copy it, or click the arrow button immediately beside it to reveal the worktree in Finder. The Finder button is disabled when the path is unavailable. Show Diff sits at the right of the path row. These extend the original read-only browser.
+
+After a path is successfully copied, a “Path copied” toast appears at the bottom of the window for two seconds. Copying again restarts the timer. The toast does not block interaction or change the layout.
 
 ## Pull
 

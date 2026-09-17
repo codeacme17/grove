@@ -15,7 +15,9 @@ struct WorktreeRow: View {
     @Binding var selectedChange: WorktreeChange?
     let onDiffRefresh: () -> Void
     @State private var isHoveringBranch = false
+    @State private var isHoveringPath = false
     let onSwitchBranch: () -> Void
+    let onPathCopied: () -> Void
     private var exists: Bool { FileManager.default.fileExists(atPath: worktree.path) }
     private var canOperate: Bool { !worktree.isBare && exists && worktree.pruneReason == nil }
 
@@ -67,21 +69,38 @@ struct WorktreeRow: View {
                         .accessibilityLabel("Pull \(worktree.name)")
                         .help(worktree.isDetached ? "Switch to a branch before pulling." : "Pull from upstream")
                     }
-                    Menu {
-                        Button("Copy Path") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(worktree.path, forType: .string)
-                        }
-                        Button("Reveal in Finder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: worktree.path)])
-                        }.disabled(!exists)
-                    } label: { Image(systemName: "ellipsis").frame(height: 24) }
-                        .menuStyle(.borderlessButton).fixedSize()
-                        .accessibilityLabel("Actions for \(worktree.name)")
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text(worktree.path).foregroundStyle(.secondary)
-                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            if NSPasteboard.general.setString(worktree.path, forType: .string) {
+                                onPathCopied()
+                            }
+                        } label: {
+                            Text(worktree.path)
+                                .foregroundStyle(isHoveringPath ? .primary : .secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { isHoveringPath = $0 }
+                        .accessibilityLabel("Copy path: \(worktree.path)")
+                        .help("Click to copy path\n\(worktree.path)")
+
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: worktree.path)])
+                        } label: {
+                            Image(systemName: "arrow.up.right.square")
+                                .frame(width: 20, height: 20)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .disabled(!exists)
+                        .accessibilityLabel("Reveal \(worktree.name) in Finder")
+                        .help("Reveal in Finder")
+                    }
                     Spacer(minLength: 0)
                     if canOperate {
                         Button {

@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var diffSelection: FileDiffSelection?
     @State private var isDiffPanelVisible = false
     @State private var diffRevision = 0
+    @State private var pathCopyNotificationID: UUID?
     @GestureState private var sidebarDrag: CGFloat = 0
     @GestureState private var isResizingSidebar = false
 
@@ -90,6 +91,34 @@ struct ContentView: View {
             }
         }
         .background(colorScheme == .light ? GroveBrand.lightBackground : Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) {
+            VStack {
+                if pathCopyNotificationID != nil {
+                    Label {
+                        Text("Path copied")
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    }
+                    .font(.callout.weight(.medium))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(.quaternary))
+                    .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+                    .transition(.opacity)
+                }
+            }
+            .padding(.bottom, 24)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: pathCopyNotificationID != nil)
+            .allowsHitTesting(false)
+        }
+        .task(id: pathCopyNotificationID) {
+            guard let notificationID = pathCopyNotificationID else { return }
+            do { try await Task.sleep(for: .seconds(2)) }
+            catch { return }
+            guard pathCopyNotificationID == notificationID else { return }
+            pathCopyNotificationID = nil
+        }
         .toolbarBackground(colorScheme == .light ? AnyShapeStyle(GroveBrand.lightBackground) : AnyShapeStyle(.bar), for: .windowToolbar)
         .toolbarBackground(colorScheme == .light ? .visible : .automatic, for: .windowToolbar)
         .navigationTitle(model.displayedProject?.name ?? "Grove")
@@ -254,6 +283,8 @@ struct ContentView: View {
                                                 }
                                             ), onDiffRefresh: { diffRevision += 1 }, onSwitchBranch: {
                                                 switchingWorktree = BranchSwitchTarget(worktree: worktree, project: project)
+                                            }, onPathCopied: {
+                                                pathCopyNotificationID = UUID()
                                             })
                             }
                         }
