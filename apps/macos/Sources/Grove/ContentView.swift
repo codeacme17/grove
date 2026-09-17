@@ -9,6 +9,7 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("projectNavigationPlacement") private var navigationPlacement: ProjectNavigationPlacement = .sidebar
     @State private var isSidebarVisible = true
+    @State private var isTopTabBarVisible = true
     @State private var sidebarWidth: CGFloat = 240
     @State private var isHoveringSidebarHandle = false
     @State private var renamingProject: Project?
@@ -26,14 +27,15 @@ struct ContentView: View {
     var body: some View {
         GeometryReader { geometry in
             let showsSidebar = navigationPlacement == .sidebar && isSidebarVisible && (!isDiffPanelVisible || geometry.size.width >= currentSidebarWidth + 706)
+            let showsTopTabBar = navigationPlacement == .top && isTopTabBarVisible
             VStack(spacing: 0) {
-                ProjectTabBar(model: model, isVisible: navigationPlacement == .top, onRename: { renamingProject = $0 },
+                ProjectTabBar(model: model, isVisible: showsTopTabBar, onRename: { renamingProject = $0 },
                               onSwitchToSidebar: { setNavigationPlacement(.sidebar, availableWidth: geometry.size.width) })
-                    .frame(height: navigationPlacement == .top ? 48 : 0, alignment: .top)
+                    .frame(height: showsTopTabBar ? 48 : 0, alignment: .top)
                     .clipped()
-                    .allowsHitTesting(navigationPlacement == .top)
-                    .disabled(navigationPlacement != .top)
-                    .accessibilityHidden(navigationPlacement != .top)
+                    .allowsHitTesting(showsTopTabBar)
+                    .disabled(!showsTopTabBar)
+                    .accessibilityHidden(!showsTopTabBar)
                 HStack(spacing: 0) {
                     HStack(spacing: 0) {
                         sidebar
@@ -61,12 +63,13 @@ struct ContentView: View {
                 }
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showsSidebar)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showsTopTabBar)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: navigationPlacement)
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     Button {
                         if navigationPlacement == .top {
-                            setNavigationPlacement(.sidebar, availableWidth: geometry.size.width)
+                            isTopTabBarVisible.toggle()
                         } else if !showsSidebar && isDiffPanelVisible && geometry.size.width < currentSidebarWidth + 706 {
                             isDiffPanelVisible = false
                             isSidebarVisible = true
@@ -74,9 +77,10 @@ struct ContentView: View {
                             isSidebarVisible.toggle()
                         }
                     } label: {
-                        Label(navigationPlacement == .top ? "Switch to Sidebar" : "Toggle Sidebar", systemImage: "sidebar.left")
+                        Label(navigationPlacement == .top ? "Toggle Tab Bar" : "Toggle Sidebar",
+                              systemImage: navigationPlacement == .top ? "rectangle.topthird.inset.filled" : "sidebar.left")
                     }
-                    .help(navigationPlacement == .top ? "Switch to Sidebar" : (showsSidebar ? "Hide Sidebar" : "Show Sidebar"))
+                    .help(navigationPlacement == .top ? (showsTopTabBar ? "Hide Tab Bar" : "Show Tab Bar") : (showsSidebar ? "Hide Sidebar" : "Show Sidebar"))
                     .keyboardShortcut("s", modifiers: [.command, .control])
                 }
                 ToolbarItem {
@@ -191,7 +195,9 @@ struct ContentView: View {
 
     private func setNavigationPlacement(_ placement: ProjectNavigationPlacement, availableWidth: CGFloat? = nil) {
         navigationPlacement = placement
-        if placement == .sidebar {
+        if placement == .top {
+            isTopTabBarVisible = true
+        } else {
             isSidebarVisible = true
             if let availableWidth, availableWidth < currentSidebarWidth + 706 {
                 isDiffPanelVisible = false

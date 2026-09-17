@@ -17,6 +17,7 @@ A native macOS home for your Git worktrees. Built with SwiftUI and Swift.
 - Refresh with **⌘R** or when returning to the app.
 - Save projects between launches. **Remove from Grove** only removes a saved entry.
 - Right-click the project navigation and choose **Switch to Top** for horizontal project tabs, or **Switch to Sidebar** to return. The layout persists between launches; tabs scroll horizontally when needed.
+- The navigation toolbar button (⌃⌘S) hides or shows the current navigation: the tab bar in top mode, or the sidebar in sidebar mode. Switching layouts through the context menu shows the chosen navigation.
 - Drag sidebar projects or top tabs to reorder them. Right-click a project to rename or remove it; names and order persist between launches. Renaming changes its display name in Grove, not its folder or Git identity.
 - Click a worktree path to copy it, or use the adjacent arrow button to reveal it in Finder.
 
