@@ -288,7 +288,11 @@ struct ContentView: View {
                                                         isDiffPanelVisible = false
                                                     }
                                                 }
-                                            ), onDiffRefresh: { diffRevision += 1 }, onSwitchBranch: {
+                                            ), onDiffRefresh: {
+                                                if isDiffPanelVisible, diffSelection?.worktree.path == worktree.path {
+                                                    diffRevision += 1
+                                                }
+                                            }, onSwitchBranch: {
                                                 switchingWorktree = BranchSwitchTarget(worktree: worktree, project: project)
                                             }, onPathCopied: {
                                                 pathCopyNotificationID = UUID()

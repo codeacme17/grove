@@ -153,11 +153,8 @@ struct WorktreeRow: View {
             }
             .transaction { $0.animation = nil }
             if canOperate && (hasOpenedDiff || isDiffExpanded) {
-                WorktreeDiffView(isBusy: isBusy, state: changesState,
-                                 selectedChange: $selectedChange, onRefresh: {
-                                     changesReloadID += 1
-                                     onDiffRefresh()
-                                 })
+                WorktreeDiffView(state: changesState, selectedChange: $selectedChange,
+                                 isBusy: isBusy, onRetry: { changesReloadID += 1 })
                     .fixedSize(horizontal: false, vertical: true)
                     .transaction {
                         $0.animation = nil
@@ -174,12 +171,14 @@ struct WorktreeRow: View {
         .task(id: ChangesRequest(reloadID: changesReloadID, refreshedAt: model.updatedAt,
                                  isBusy: isBusy, canOperate: canOperate)) {
             guard canOperate, !isBusy else { return }
-            await changesState.load(in: worktree, project: project)
-            guard !Task.isCancelled, changesState.errorMessage == nil, let changes = changesState.changes else { return }
-            if let selectedChange {
-                self.selectedChange = changes.first { $0.path == selectedChange.path && $0.section == selectedChange.section }
+            await changesState.observe(in: worktree, project: project) {
+                guard let changes = changesState.changes else { return }
+                if let selectedChange {
+                    self.selectedChange = changes.first { $0.path == selectedChange.path && $0.section == selectedChange.section }
+                }
+                if changes.isEmpty { isDiffExpanded = false }
+                onDiffRefresh()
             }
-            if changes.isEmpty { isDiffExpanded = false }
         }
         .onChange(of: isDiffExpanded, initial: true) { _, expanded in
             if expanded { hasOpenedDiff = true }

@@ -3,27 +3,19 @@ import GroveCore
 import SwiftUI
 
 struct WorktreeDiffView: View {
-    let isBusy: Bool
     @Bindable var state: WorktreeChangesModel
     @Binding var selectedChange: WorktreeChange?
-    let onRefresh: () -> Void
+    let isBusy: Bool
+    let onRetry: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Local Changes").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-                Spacer()
-                Button(action: onRefresh) {
-                    LoadingIndicator(isLoading: state.isLoading || isBusy, label: "Refresh changes", idleIcon: "arrow.clockwise")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Refresh changes")
-                .accessibilityLabel("Refresh changes")
-                .disabled(isBusy)
-            }
+            Text("Local Changes").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
             if let errorMessage = state.errorMessage {
-                Text(errorMessage).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+                HStack {
+                    Text(errorMessage).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+                    Button("Retry", action: onRetry).disabled(isBusy)
+                }
             }
             if let changes = state.changes {
                 if changes.isEmpty {

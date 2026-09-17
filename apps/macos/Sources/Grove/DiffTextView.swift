@@ -45,6 +45,12 @@ struct DiffTextView: NSViewRepresentable {
             if let color { styled.addAttribute(.foregroundColor, value: color, range: range) }
             offset = NSMaxRange(range)
         }
+        let scrollPosition = scrollView.contentView.bounds.origin
+        let selection = textView.selectedRange()
         textView.textStorage?.setAttributedString(styled)
+        let start = min(selection.location, source.length)
+        textView.setSelectedRange(NSRange(location: start, length: min(selection.length, source.length - start)))
+        scrollView.contentView.scroll(to: scrollPosition)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 }

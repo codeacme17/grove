@@ -23,6 +23,8 @@ A native macOS home for your Git worktrees. Built with SwiftUI and Swift.
 
 Worktree cards also support **Pull**, **Switch Branch…**, and **Show Diff**. Pull and branch switching require a clean working tree; diffs are read-only. See [worktree actions](../../docs/worktree-actions.md). A worktree's presence does not indicate that an agent is running.
 
+Diff file lists, changed-file counts, and the selected patch update automatically as files and Git state change. There is no need to refresh either Diff view manually.
+
 ## Build and run
 
 Run the following commands from `apps/macos`. From the repository root, use `make test-macos`, `make build-macos`, or `make run-macos`.

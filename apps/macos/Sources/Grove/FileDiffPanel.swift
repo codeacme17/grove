@@ -46,12 +46,6 @@ struct FileDiffPanel: View {
                 Text(displayedSelection.worktree.name).font(.caption).foregroundStyle(.secondary)
                     .lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 0)
-                Button { reloadID += 1 } label: {
-                    LoadingIndicator(isLoading: preview.isLoading || isBusy,
-                                     label: "Refresh file diff", idleIcon: "arrow.clockwise")
-                }
-                .disabled(isBusy)
-                .help("Refresh file diff").accessibilityLabel("Refresh file diff")
                 Button(action: close) {
                     Image(systemName: "xmark").frame(width: 24, height: 24)
                 }
@@ -79,7 +73,7 @@ struct FileDiffPanel: View {
             if let snapshot = preview.snapshot {
                 let content = snapshot.content
                 if content.text.isEmpty {
-                    message("No textual diff available. The file may have changed; refresh the list.")
+                    message("No textual diff available.")
                 } else {
                     DiffTextView(text: content.text)
                         .id(snapshot.selection.documentID)
