@@ -12,7 +12,7 @@ public struct DiffContent: Sendable {
 }
 
 public struct WorktreeRepository: Sendable {
-    private let runner: GitRunner
+    let runner: GitRunner
     private let diffLimit = 200_000
 
     public init(runner: GitRunner = GitRunner()) { self.runner = runner }
@@ -90,7 +90,7 @@ public struct WorktreeRepository: Sendable {
         }
     }
 
-    private func validate(_ worktree: Worktree, project: Project) async throws {
+    func validate(_ worktree: Worktree, project: Project) async throws {
         guard !worktree.isBare else { throw GroveError.message("This operation requires a working tree.") }
         let repository = GitRepository(runner: runner)
         let actual = try await repository.project(at: URL(fileURLWithPath: worktree.path))

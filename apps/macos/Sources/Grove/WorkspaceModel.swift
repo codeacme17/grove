@@ -23,6 +23,9 @@ final class WorkspaceModel {
     private var projectSnapshots: [String: ProjectSnapshot] = [:]
     var actionError: String?
     private(set) var busyWorktreePath: String?
+    private(set) var busyProjectID: String?
+    var isPerformingGitOperation: Bool { busyProjectID != nil }
+    private(set) var createdWorktreePath: String?
     private(set) var worktreeMessages: [String: String] = [:]
     private struct WorktreeKey: Hashable {
         let project: String
@@ -143,39 +146,88 @@ final class WorkspaceModel {
     }
 
     func pull(_ worktree: Worktree, project: Project) async throws {
-        try await performWorktreeOperation(worktree, project: project) {
+        try await performGitOperation(path: worktree.path, project: project) {
             _ = try await WorktreeRepository().pull(worktree, project: project)
-            return "Pull completed."
+            worktreeMessages[worktree.path] = "Pull completed."
         }
     }
 
     func switchBranch(_ name: String, in worktree: Worktree, project: Project) async throws {
-        try await performWorktreeOperation(worktree, project: project) {
+        try await performGitOperation(path: worktree.path, project: project) {
             try await WorktreeRepository().switchBranch(name, in: worktree, project: project)
-            return "Switched to \(name)."
+            worktreeMessages[worktree.path] = "Switched to \(name)."
         }
     }
 
-    private func performWorktreeOperation(_ worktree: Worktree, project: Project,
-                                          action: () async throws -> String) async throws {
-        guard busyWorktreePath == nil else {
+    func createWorktree(branch: WorktreeBranch, destination: String, project: Project) async throws -> Worktree {
+        let created = try await performGitOperation(path: nil, project: project) {
+            try await WorktreeRepository().createWorktree(branch: branch, destination: destination, project: project)
+        }
+        if selectedProject?.id == project.id { createdWorktreePath = created.path }
+        return created
+    }
+
+    func removeWorktree(_ worktree: Worktree, project: Project) async throws {
+        try await performGitOperation(path: worktree.path, project: project) {
+            try await WorktreeRepository().removeWorktree(worktree, project: project)
+        }
+    }
+
+    private func performGitOperation<T>(path: String?, project: Project,
+                                        action: () async throws -> T) async throws -> T {
+        guard !isPerformingGitOperation else {
             throw GroveError.message("Wait for the current Git operation to finish.")
         }
-        busyWorktreePath = worktree.path
-        worktreeMessages[worktree.path] = nil
+        busyProjectID = project.id
+        busyWorktreePath = path
+        createdWorktreePath = nil
+        if let path { worktreeMessages[path] = nil }
         defer {
+            busyProjectID = nil
             busyWorktreePath = nil
+        }
+        let result: Result<T, any Error>
+        do { result = .success(try await action()) }
+        catch { result = .failure(error) }
+        // An unstructured task still reloads disk state when the operation's task was cancelled.
+        await Task { await reloadAfterOperation(project) }.value
+        return try result.get()
+    }
+
+    private func reloadAfterOperation(_ project: Project) async {
+        if loadingProjectID == project.id {
+            refreshTask?.cancel()
+            isLoading = false
+        }
+        projectSnapshots[project.id] = nil
+        do {
+            let trees = try await repository.worktrees(in: project)
+            guard projects.contains(where: { $0.id == project.id }) else { return }
+            let timestamp = Date()
+            projectSnapshots[project.id] = ProjectSnapshot(worktrees: trees, updatedAt: timestamp)
+            let existing = Set(trees.map(\.path))
+            let removed = changeModelOrder.filter { $0.project == project.id && !existing.contains($0.path) }
+            for key in removed {
+                changeModels[key] = nil
+                worktreeMessages[key.path] = nil
+            }
+            changeModelOrder.removeAll { removed.contains($0) }
             if selectedProject?.id == project.id {
-                refreshTask?.cancel()
-                isLoading = false
-                refresh()
+                worktrees = trees
+                snapshotProjectID = project.id
+                updatedAt = timestamp
+                loadError = nil
+            }
+        } catch {
+            if selectedProject?.id == project.id {
+                loadError = "Could not refresh after the Git operation. Refresh before retrying.\n\(error.localizedDescription)"
             }
         }
-        worktreeMessages[worktree.path] = try await action()
     }
 
     func refresh() {
         let project = selectedProject
+        if let project, busyProjectID == project.id { return }
         if isLoading && loadingProjectID == project?.id { return }
         refreshTask?.cancel()
         if project == nil || !projects.contains(where: { $0.id == snapshotProjectID }) {

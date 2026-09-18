@@ -188,3 +188,78 @@ private struct WorkspaceFixture {
     #expect(restored.changes?.first?.path == "new.txt")
     #expect(restored.collapsedSections.contains(.untracked))
 }
+
+@MainActor @Test func lifecycleWorkspaceSerializesCreationAndRefreshesTheCapturedProject() async throws {
+    let fixture = try WorkspaceFixture()
+    defer { fixture.cleanUp() }
+    let git = GitRunner()
+    var projects: [Project] = []
+    for name in ["First", "Second"] {
+        let path = fixture.root.appendingPathComponent(name).path
+        _ = try await git.run(["init", "-b", "main", path])
+        _ = try await git.run(["-C", path, "-c", "user.name=Grove Tests", "-c", "user.email=tests@example.invalid",
+                               "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-m", "Initial"])
+        projects.append(try await GitRepository().project(at: URL(fileURLWithPath: path)))
+    }
+    try fixture.store.save(projects)
+    let model = WorkspaceModel(store: fixture.store)
+    let first = projects[0]
+    let second = projects[1]
+    let original = try #require(try await GitRepository().worktrees(in: first).first)
+    let create = Task {
+        try await model.createWorktree(branch: .new(name: "task", base: "main"),
+                                       destination: fixture.root.appendingPathComponent("new worktree").path, project: first)
+    }
+    while !model.isPerformingGitOperation { await Task.yield() }
+    #expect(model.busyWorktreePath == nil)
+    await #expect(throws: GroveError.self) { try await model.switchBranch("main", in: original, project: first) }
+    model.selection = second.id
+    model.refresh()
+    _ = try await create.value
+    #expect(!model.isPerformingGitOperation)
+    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+    while model.isLoading && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+    #expect(model.displayedProject?.id == second.id)
+    #expect(model.worktrees.count == 1)
+    model.selection = first.id
+    model.refresh()
+    #expect(model.worktrees.count == 2)
+    let created = try #require(model.worktrees.first { $0.revision == "task" })
+    try await model.removeWorktree(created, project: first)
+    #expect(model.worktrees.count == 1)
+    #expect(model.loadError == nil)
+}
+
+@MainActor @Test func lifecycleWorkspaceRefreshesPartialStateAfterCancellation() async throws {
+    let fixture = try WorkspaceFixture()
+    defer { fixture.cleanUp() }
+    let git = GitRunner()
+    let main = fixture.root.appendingPathComponent("main")
+    _ = try await git.run(["init", "-b", "main", main.path])
+    _ = try await git.run(["-C", main.path, "-c", "user.name=Grove Tests", "-c", "user.email=tests@example.invalid",
+                           "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-m", "Initial"])
+    let project = try await GitRepository().project(at: main)
+    try fixture.store.save([project])
+    let hooks = fixture.root.appendingPathComponent("hooks")
+    try FileManager.default.createDirectory(at: hooks, withIntermediateDirectories: true)
+    let hook = hooks.appendingPathComponent("post-checkout")
+    try "#!/bin/sh\ntouch \"$(dirname \"$0\")/started\"\nexec /bin/sleep 2\n".write(to: hook, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: hook.path)
+    _ = try await git.run(["-C", main.path, "config", "core.hooksPath", hooks.path])
+    let model = WorkspaceModel(store: fixture.store)
+    let operation = Task {
+        try await model.createWorktree(branch: .new(name: "cancelled", base: "main"),
+            destination: fixture.root.appendingPathComponent("cancelled").path, project: project)
+    }
+    let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+    while !FileManager.default.fileExists(atPath: hooks.appendingPathComponent("started").path) && ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(FileManager.default.fileExists(atPath: hooks.appendingPathComponent("started").path))
+    operation.cancel()
+    await #expect(throws: (any Error).self) { try await operation.value }
+    #expect(!model.isPerformingGitOperation)
+    #expect(model.worktrees.contains { $0.revision == "cancelled" })
+    #expect(model.loadError == nil)
+    #expect(model.createdWorktreePath == nil)
+}

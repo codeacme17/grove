@@ -14,6 +14,8 @@ struct ContentView: View {
     @State private var isHoveringSidebarHandle = false
     @State private var renamingProject: Project?
     @State private var switchingWorktree: BranchSwitchTarget?
+    @State private var creatingProject: Project?
+    @State private var deletingWorktree: WorktreeRemovalTarget?
     @State private var expandedDiffs: Set<String> = []
     @State private var diffSelection: FileDiffSelection?
     @State private var isDiffPanelVisible = false
@@ -53,7 +55,7 @@ struct ContentView: View {
                     } panel: {
                         if let diffSelection {
                             FileDiffPanel(selection: diffSelection, isActive: isDiffPanelVisible,
-                                          isBusy: model.busyWorktreePath != nil || model.isLoading,
+                                          isBusy: model.isPerformingGitOperation || model.isLoading,
                                           refreshedAt: model.updatedAt, revision: diffRevision) {
                                 isDiffPanelVisible = false
                             }
@@ -84,11 +86,20 @@ struct ContentView: View {
                     .keyboardShortcut("s", modifiers: [.command, .control])
                 }
                 ToolbarItem {
+                    if let project = model.selectedProject {
+                        Button { creatingProject = project } label: {
+                            Label("Create Worktree", systemImage: "plus")
+                        }
+                        .disabled(model.isPerformingGitOperation || model.isLoading || model.isProjectTransitioning)
+                        .help("Create Worktree")
+                    }
+                }
+                ToolbarItem {
                     if model.selectedProject != nil {
                         Button(action: model.refresh) {
                             LoadingIndicator(isLoading: model.isLoading, label: "Refresh worktrees", idleIcon: "arrow.clockwise")
                         }
-                        .disabled(model.isLoading)
+                        .disabled(model.isLoading || model.isPerformingGitOperation)
                         .help("Refresh Worktrees (⌘R)")
                     }
                 }
@@ -132,9 +143,12 @@ struct ContentView: View {
             model.refresh()
         }
         .onChange(of: model.updatedAt) { _, date in
-            guard date != nil, isDiffPanelVisible, let diffSelection else { return }
-            if !model.worktrees.contains(where: { $0.path == diffSelection.worktree.path && !$0.isBare && $0.pruneReason == nil }) {
+            guard date != nil else { return }
+            expandedDiffs.formIntersection(Set(model.worktrees.map(\.path)))
+            if let diffSelection,
+               !model.worktrees.contains(where: { $0.path == diffSelection.worktree.path && !$0.isBare && $0.pruneReason == nil }) {
                 isDiffPanelVisible = false
+                self.diffSelection = nil
             }
         }
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.refresh() } }
@@ -145,6 +159,12 @@ struct ContentView: View {
         }
         .sheet(item: $switchingWorktree) { target in
             SwitchBranchSheet(target: target, model: model)
+        }
+        .sheet(item: $creatingProject) { project in
+            CreateWorktreeSheet(project: project, model: model)
+        }
+        .sheet(item: $deletingWorktree) { target in
+            DeleteWorktreeSheet(target: target, model: model)
         }
         .alert("Grove", isPresented: Binding(
             get: { model.actionError != nil }, set: { if !$0 { model.actionError = nil } }
@@ -267,41 +287,49 @@ struct ContentView: View {
                         GroveEmptyStateLabel(title: "No registered worktrees")
                     } description: { Text("Refresh to read the latest state from Git.") }
                 } else {
-                    ScrollView {
-                        VStack(spacing: 12) {
-                            ForEach(Array(model.worktrees.enumerated()), id: \.element.id) { index, worktree in
-                                WorktreeRow(worktree: worktree, project: project, isMain: index == 0,
-                                            model: model, changesState: model.changesModel(for: worktree, project: project),
-                                            isDiffExpanded: Binding(
-                                                get: { expandedDiffs.contains(worktree.path) },
-                                                set: { expanded in
-                                                    if expanded { expandedDiffs.insert(worktree.path) }
-                                                    else { expandedDiffs.remove(worktree.path) }
-                                                }
-                                            ), selectedChange: Binding(
-                                                get: { isDiffPanelVisible && diffSelection?.worktree.path == worktree.path ? diffSelection?.change : nil },
-                                                set: { change in
-                                                    if let change {
-                                                        diffSelection = FileDiffSelection(change: change, worktree: worktree, project: project)
-                                                        isDiffPanelVisible = true
-                                                    } else if diffSelection?.worktree.path == worktree.path {
-                                                        isDiffPanelVisible = false
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            VStack(spacing: 12) {
+                                ForEach(Array(model.worktrees.enumerated()), id: \.element.id) { index, worktree in
+                                    WorktreeRow(worktree: worktree, project: project, isMain: index == 0,
+                                                model: model, changesState: model.changesModel(for: worktree, project: project),
+                                                isDiffExpanded: Binding(
+                                                    get: { expandedDiffs.contains(worktree.path) },
+                                                    set: { expanded in
+                                                        if expanded { expandedDiffs.insert(worktree.path) }
+                                                        else { expandedDiffs.remove(worktree.path) }
                                                     }
-                                                }
-                                            ), onDiffRefresh: {
-                                                if isDiffPanelVisible, diffSelection?.worktree.path == worktree.path {
-                                                    diffRevision += 1
-                                                }
-                                            }, onSwitchBranch: {
-                                                switchingWorktree = BranchSwitchTarget(worktree: worktree, project: project)
-                                            }, onPathCopied: {
-                                                pathCopyNotificationID = UUID()
-                                            })
+                                                ), selectedChange: Binding(
+                                                    get: { isDiffPanelVisible && diffSelection?.worktree.path == worktree.path ? diffSelection?.change : nil },
+                                                    set: { change in
+                                                        if let change {
+                                                            diffSelection = FileDiffSelection(change: change, worktree: worktree, project: project)
+                                                            isDiffPanelVisible = true
+                                                        } else if diffSelection?.worktree.path == worktree.path {
+                                                            isDiffPanelVisible = false
+                                                        }
+                                                    }
+                                                ), onDiffRefresh: {
+                                                    if isDiffPanelVisible, diffSelection?.worktree.path == worktree.path {
+                                                        diffRevision += 1
+                                                    }
+                                                }, onSwitchBranch: {
+                                                    switchingWorktree = BranchSwitchTarget(worktree: worktree, project: project)
+                                                }, onDelete: {
+                                                    deletingWorktree = WorktreeRemovalTarget(worktree: worktree, project: project)
+                                                }, onPathCopied: {
+                                                    pathCopyNotificationID = UUID()
+                                                })
+                                        .id(worktree.path)
+                                }
                             }
+                            .padding(24)
+                            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: expandedDiffs)
+                            .disabled(model.isProjectTransitioning)
                         }
-                        .padding(24)
-                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: expandedDiffs)
-                        .disabled(model.isProjectTransitioning)
+                        .onChange(of: model.createdWorktreePath) { _, path in
+                            if let path { proxy.scrollTo(path, anchor: .center) }
+                        }
                     }
                 }
                 HStack(spacing: 8) {
