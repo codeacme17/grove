@@ -189,7 +189,8 @@ private struct WorkspaceFixture {
     #expect(restored.collapsedSections.contains(.untracked))
 }
 
-@MainActor @Test func lifecycleWorkspaceSerializesCreationAndRefreshesTheCapturedProject() async throws {
+@MainActor @Test(arguments: [false, true])
+func lifecycleWorkspaceSerializesCreationAndRefreshesTheCapturedProject(returnsDuringOperation: Bool) async throws {
     let fixture = try WorkspaceFixture()
     defer { fixture.cleanUp() }
     let git = GitRunner()
@@ -215,12 +216,17 @@ private struct WorkspaceFixture {
     await #expect(throws: GroveError.self) { try await model.switchBranch("main", in: original, project: first) }
     model.selection = second.id
     model.refresh()
+    if returnsDuringOperation {
+        model.selection = first.id
+        model.refresh()
+    }
     _ = try await create.value
     #expect(!model.isPerformingGitOperation)
     let deadline = ContinuousClock.now.advanced(by: .seconds(5))
     while model.isLoading && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
-    #expect(model.displayedProject?.id == second.id)
-    #expect(model.worktrees.count == 1)
+    #expect(!model.isLoading)
+    #expect(model.displayedProject?.id == (returnsDuringOperation ? first.id : second.id))
+    #expect(model.worktrees.count == (returnsDuringOperation ? 2 : 1))
     model.selection = first.id
     model.refresh()
     #expect(model.worktrees.count == 2)

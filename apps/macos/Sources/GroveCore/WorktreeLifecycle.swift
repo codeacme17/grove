@@ -22,12 +22,7 @@ extension WorktreeRepository {
     public func creationOptions(project: Project) async throws -> WorktreeCreationOptions {
         let trees = try await GitRepository(runner: runner).worktrees(in: project)
         guard let main = trees.first else { throw GroveError.message("No registered worktrees are available. Refresh the project.") }
-        let data = try await runner.run(["--git-dir", project.gitDirectory, "for-each-ref", "--sort=refname",
-                                         "--format=%(refname)", "refs/heads/"])
-        let branches = String(decoding: data, as: UTF8.self).split(separator: "\n").map { ref in
-            LocalBranch(name: String(ref.dropFirst("refs/heads/".count)),
-                        checkedOutPath: trees.first { $0.branch == String(ref) }?.path)
-        }
+        let branches = try await localBranches(project: project, worktrees: trees)
         return WorktreeCreationOptions(branches: branches,
             defaultBaseBranch: branches.first { "refs/heads/\($0.name)" == main.branch }?.name,
             destinationRoot: URL(fileURLWithPath: main.path).deletingLastPathComponent()

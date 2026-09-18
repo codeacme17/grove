@@ -227,7 +227,12 @@ final class WorkspaceModel {
 
     func refresh() {
         let project = selectedProject
-        if let project, busyProjectID == project.id { return }
+        if let project, busyProjectID == project.id {
+            refreshTask?.cancel()
+            loadingProjectID = project.id
+            isLoading = false
+            return
+        }
         if isLoading && loadingProjectID == project?.id { return }
         refreshTask?.cancel()
         if project == nil || !projects.contains(where: { $0.id == snapshotProjectID }) {
