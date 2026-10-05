@@ -22,6 +22,7 @@ final class WorkspaceModel {
     }
     private var projectSnapshots: [String: ProjectSnapshot] = [:]
     var actionError: String?
+    var toast: ToastNotification?
     private(set) var busyWorktreePath: String?
     private(set) var busyProjectID: String?
     var isPerformingGitOperation: Bool { busyProjectID != nil }
@@ -146,11 +147,21 @@ final class WorkspaceModel {
         projects = next
     }
 
-    func pull(_ worktree: Worktree, project: Project) async throws {
-        try await performGitOperation(path: worktree.path, project: project) {
-            _ = try await WorktreeRepository().pull(worktree, project: project)
-            worktreeMessages[worktree.path] = "Pull completed."
+    func pull(_ worktree: Worktree, project: Project) async {
+        do {
+            try await performGitOperation(path: worktree.path, project: project) {
+                _ = try await WorktreeRepository().pull(worktree, project: project)
+            }
+            toast = ToastNotification(message: "Pull completed for \(worktree.name).", duration: .seconds(3))
+        } catch {
+            toast = ToastNotification(message: "Could not pull \(worktree.name).",
+                                      detail: error.localizedDescription, isError: true, duration: .seconds(6))
         }
+    }
+
+    func dismissToast(id: UUID) {
+        guard toast?.id == id else { return }
+        toast = nil
     }
 
     func switchBranch(_ name: String, in worktree: Worktree, project: Project) async throws {

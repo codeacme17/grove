@@ -38,6 +38,7 @@ Create/delete Git writes have a 120-second timeout. Their sheets show progress a
 - Detached HEADs must switch to a local branch first. Missing upstreams, authentication failures, and divergent histories show Git's error.
 - Existing Git authentication is used. Terminal prompts are disabled; authenticate outside Grove if necessary.
 - The Pull command has a 120-second timeout. A failed or timed-out Pull can still have fetched remote references; Grove reloads the worktree list afterward.
+- Pull results appear as a toast at the bottom of the window instead of a message inside the worktree card or a modal alert. Success toasts name the worktree and disappear after three seconds; failures include the error and remain for six seconds. Toasts can be dismissed, and a new notification replaces the previous one and restarts its timer.
 
 ## Switch Branch
 
