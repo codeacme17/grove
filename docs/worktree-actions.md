@@ -4,6 +4,33 @@ Each available, non-bare worktree card provides a Pull icon in its top-right cor
 
 After a path is successfully copied, a “Path copied” toast appears at the bottom of the window for two seconds. Copying again restarts the timer. The toast does not block interaction or change the layout.
 
+## Create Worktree
+
+The project toolbar's **Create Worktree** button opens a sheet with New Branch (default) and Existing Branch modes. New Branch accepts a new name and a local base branch, defaulting to the main worktree's branch when available. If the main worktree is detached or bare, explicitly choose a local base. Repositories without any committed local branch cannot create a worktree yet. Existing Branch lists local branches and disables those already checked out elsewhere.
+
+Grove suggests `<repository-parent>/grove-worktrees/<branch-directory>`. Branch names containing slashes get a safe single-directory suggestion, such as `feature/new-task` → `feature-new-task`. Edit the full absolute path or use **Choose Parent Folder**. Existing files, directories (including empty ones), and symlinks are rejected; nothing is overwritten. Invalid or conflicting names, missing bases, and occupied branches are checked again on submission. Grove does not fetch, guess remote branches, or accept tags/arbitrary commits as bases.
+
+After creation, Grove refreshes the project and scrolls to the new worktree when that project remains selected. It does not launch an editor or terminal.
+
+## Delete Worktree
+
+Each card's actions menu includes **Delete Worktree…**. This removes the directory and its Git worktree registration, including worktrees created outside Grove. It preserves the local branch and commits. **Remove from Grove** remains a separate project action that only removes the saved entry.
+
+The confirmation sheet names the worktree and full directory path, describes the disk effects, and checks deletion eligibility. Deletion rechecks repository identity, the registered root, and eligibility before using non-forced `git worktree remove`.
+
+- Main worktrees, bare entries, locked worktrees, detached HEADs, and missing/stale paths cannot be deleted.
+- Staged, unstaged, untracked, and ignored content block deletion. Grove also checks for gitlinks/submodules and nested `.git` repositories, including repositories embedded in otherwise tracked directories.
+- The sheet or menu explains why an operation is unavailable. Preserve content or resolve the condition outside Grove, then check again.
+- There is no force, stash, unlock, branch deletion, pruning, or recursive filesystem-deletion fallback.
+
+After removal, Grove refreshes the project and clears details and cached changes for removed worktrees.
+
+## Operation coordination
+
+Creation, deletion, Pull, and branch switching share a single write-operation guard, including project-scoped creation before a target exists. Switching projects does not redirect an operation. Grove refreshes the affected project's snapshot after success, failure, or cancellation; another selected project keeps its own results.
+
+Create/delete Git writes have a 120-second timeout. Their sheets show progress and provide **Stop** while an operation is running. Stopping or failing does not imply rollback: a failed checkout hook, for example, may leave a new branch, directory, and registration. Grove reports the observed remaining state when a Git write fails and does not destructively clean it up. External Git processes do not share Grove's operation guard; final Git errors are surfaced if state changes during an action.
+
 ## Pull
 
 - Pull uses the current branch's configured upstream with `git pull --ff-only --no-rebase --no-autostash --no-recurse-submodules`.
@@ -40,8 +67,12 @@ After a path is successfully copied, a “Path copied” toast appears at the bo
 
 ## Verification
 
-`make test-macos` covers real local repositories and a local bare remote: fast-forward Pull into a linked worktree, divergent histories, dirty worktrees, occupied branches, missing upstreams, detached HEADs, missing paths, repository identity mismatches, staged/unstaged/untracked and binary diffs, unborn repositories, preview limits, and disabled external diff helpers.
+`make test-macos` also covers creation with new/existing branches, destination/name conflicts, branch occupancy changes, branch/commit preservation, unsafe deletion cases (including ignored files and nested repositories), partial creation failures, cancellation, and project switching.
+
+Existing tests cover real local repositories and a local bare remote: fast-forward Pull into a linked worktree, divergent histories, dirty worktrees, occupied branches, missing upstreams, detached HEADs, missing paths, repository identity mismatches, staged/unstaged/untracked and binary diffs, unborn repositories, preview limits, and disabled external diff helpers.
 
 The live-update integration test also saves files atomically, edits the same changed path twice, stages through a linked worktree's external index, renames, commits, creates and deletes untracked files, and verifies observation stops after cancellation.
 
 For a UI check, use disposable repositories: expand change groups, select files (including renames and files with both staged and unstaged edits), select/copy patch text, switch a clean worktree to a free local branch, and Pull from a local test remote. Confirm loading and errors appear, unavailable actions are disabled, and the card refreshes after an operation. Do not use unrelated user repositories for write-operation tests.
+
+For lifecycle UI verification, use disposable repositories: create with each mode, edit the suggested destination, confirm occupied branches are unavailable, inspect deletion blockers and the confirmation path, remove a clean linked worktree, and verify its branch still exists.

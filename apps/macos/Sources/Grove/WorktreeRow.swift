@@ -18,10 +18,11 @@ struct WorktreeRow: View {
     @State private var isHoveringBranch = false
     @State private var isHoveringPath = false
     let onSwitchBranch: () -> Void
+    let onDelete: () -> Void
     let onPathCopied: () -> Void
     private var exists: Bool { FileManager.default.fileExists(atPath: worktree.path) }
     private var canOperate: Bool { !worktree.isBare && exists && worktree.pruneReason == nil }
-    private var isBusy: Bool { model.busyWorktreePath != nil || model.isLoading || model.isProjectTransitioning }
+    private var isBusy: Bool { model.isPerformingGitOperation || model.isLoading || model.isProjectTransitioning }
 
     private struct ChangesRequest: Equatable {
         let reloadID: Int
@@ -52,7 +53,7 @@ struct WorktreeRow: View {
                             }
                             .buttonStyle(.plain)
                             .onHover { isHoveringBranch = $0 }
-                            .disabled(model.busyWorktreePath != nil)
+                            .disabled(model.isPerformingGitOperation)
                             .accessibilityLabel("Switch branch for \(worktree.name), current revision \(worktree.revision)")
                             .help("Click to switch branch\n\(worktree.revision)")
                         } else {
@@ -74,10 +75,22 @@ struct WorktreeRow: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
-                        .disabled(model.busyWorktreePath != nil || worktree.isDetached)
+                        .disabled(model.isPerformingGitOperation || worktree.isDetached)
                         .accessibilityLabel("Pull \(worktree.name)")
                         .help(worktree.isDetached ? "Switch to a branch before pulling." : "Pull from upstream")
                     }
+                    Menu {
+                        Button("Delete Worktree…", role: .destructive, action: onDelete)
+                            .disabled(deletionUnavailableReason != nil)
+                        if let reason = deletionUnavailableReason { Text(reason) }
+                    } label: {
+                        Image(systemName: "ellipsis.circle").font(.system(size: 16))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .disabled(isBusy)
+                    .help(deletionUnavailableReason ?? "Worktree actions")
+                    .accessibilityLabel("Actions for \(worktree.name)")
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -190,6 +203,16 @@ struct WorktreeRow: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
         // Include the card decorations so their bounds shrink with the clipped content.
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: isDiffExpanded)
+    }
+
+    private var deletionUnavailableReason: String? {
+        if worktree.isBare { return "Bare repositories cannot be deleted." }
+        if isMain { return "The main worktree cannot be deleted." }
+        if !exists || worktree.pruneReason != nil { return "Path unavailable. Stale-registration cleanup is not supported." }
+        if worktree.lockReason != nil { return "Unlock this worktree outside Grove first." }
+        if worktree.isDetached { return "Switch to a local branch before deleting this worktree." }
+        if let count = changesState.changedFileCount, count > 0 { return "Preserve local changes before deleting this worktree." }
+        return nil
     }
 
     private var revisionLabel: some View {
