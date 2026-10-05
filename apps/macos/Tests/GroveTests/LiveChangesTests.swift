@@ -65,6 +65,64 @@ import Testing
     #expect(model.updatedAt == timestamp)
 }
 
+@MainActor @Test func liveWorktreesWaitForProjectScopedCreationToFinish() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("grove-live-creation-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let main = root.appendingPathComponent("main")
+    let git = GitRunner()
+    _ = try await git.run(["init", "-b", "main", main.path])
+    for (key, value) in [("user.name", "Grove Tests"), ("user.email", "tests@example.invalid"),
+                         ("commit.gpgsign", "false"), ("core.hooksPath", "/dev/null")] {
+        _ = try await git.run(["-C", main.path, "config", key, value])
+    }
+    _ = try await git.run(["-C", main.path, "commit", "--allow-empty", "-m", "Initial"])
+    let project = try await GitRepository().project(at: main)
+    let store = ProjectStore(file: root.appendingPathComponent("projects.json"))
+    try store.save([project])
+    let model = WorkspaceModel(store: store)
+    let observation = Task { await model.observeWorktrees() }
+    defer { observation.cancel() }
+    try await waitForLiveChange { model.worktrees.count == 1 }
+    let timestamp = try #require(model.updatedAt)
+
+    // Hold Git after registering the worktree so filesystem events arrive during creation.
+    let hooks = root.appendingPathComponent("hooks")
+    try FileManager.default.createDirectory(at: hooks, withIntermediateDirectories: true)
+    let hook = hooks.appendingPathComponent("post-checkout")
+    let release = hooks.appendingPathComponent("release")
+    try "#!/bin/sh\nhook_dir=\"$(dirname \"$0\")\"\ntouch \"$hook_dir/started\"\nwhile [ ! -f \"$hook_dir/release\" ]; do /bin/sleep 0.05; done\n"
+        .write(to: hook, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: hook.path)
+    _ = try await git.run(["-C", main.path, "config", "core.hooksPath", hooks.path])
+    let creation = Task {
+        try await model.createWorktree(branch: .new(name: "feature", base: "main"),
+            destination: root.appendingPathComponent("linked").path, project: project)
+    }
+    defer {
+        try? Data().write(to: release)
+        creation.cancel()
+    }
+    try await waitForLiveChange { FileManager.default.fileExists(atPath: hooks.appendingPathComponent("started").path) }
+    #expect(model.isPerformingGitOperation)
+    #expect(model.busyWorktreePath == nil)
+    try await Task.sleep(for: .seconds(1))
+    #expect(model.worktrees.count == 1)
+    #expect(model.updatedAt == timestamp)
+    #expect(model.loadError == nil)
+
+    try Data().write(to: release)
+    let created = try await creation.value
+    #expect(!model.isPerformingGitOperation)
+    #expect(model.worktrees.count == 2)
+    #expect(model.worktrees.contains { $0.path == created.path })
+    #expect(model.createdWorktreePath == created.path)
+    #expect(model.loadError == nil)
+
+    try await model.removeWorktree(created, project: project)
+    #expect(model.worktrees.count == 1)
+    #expect(model.loadError == nil)
+}
+
 @MainActor @Test func liveWorktreesSwitchProjectsAndIgnoreThePreviousRepository() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("grove-live-selection-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: root) }

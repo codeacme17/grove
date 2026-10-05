@@ -62,7 +62,7 @@ struct SwitchBranchSheet: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(isLoading || isSwitching || model.busyWorktreePath != nil || selectedBranch.isEmpty
+                .disabled(isLoading || isSwitching || model.isPerformingGitOperation || selectedBranch.isEmpty
                           || target.worktree.branch == "refs/heads/\(selectedBranch)")
             }
         }

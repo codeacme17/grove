@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:grove}/apps/macos",
+      "name": "Debug Grove (apps/macos)",
+      "target": "Grove",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug Grove (apps/macos)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:grove}/apps/macos",
+      "name": "Release Grove (apps/macos)",
+      "target": "Grove",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release Grove (apps/macos)"
+    }
+  ]
+}

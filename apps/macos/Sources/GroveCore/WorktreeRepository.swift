@@ -12,19 +12,23 @@ public struct DiffContent: Sendable {
 }
 
 public struct WorktreeRepository: Sendable {
-    private let runner: GitRunner
+    let runner: GitRunner
     private let diffLimit = 200_000
 
     public init(runner: GitRunner = GitRunner()) { self.runner = runner }
 
     public func branches(in worktree: Worktree, project: Project) async throws -> [LocalBranch] {
         try await validate(worktree, project: project)
-        let data = try await runner.run(["-C", worktree.path, "for-each-ref", "--sort=refname",
-                                         "--format=%(refname)", "refs/heads/"])
         let trees = try await GitRepository(runner: runner).worktrees(in: project)
+        return try await localBranches(project: project, worktrees: trees)
+    }
+
+    func localBranches(project: Project, worktrees: [Worktree]) async throws -> [LocalBranch] {
+        let data = try await runner.run(["--git-dir", project.gitDirectory, "for-each-ref", "--sort=refname",
+                                         "--format=%(refname)", "refs/heads/"])
         return String(decoding: data, as: UTF8.self).split(separator: "\n").map { ref in
             LocalBranch(name: String(ref.dropFirst("refs/heads/".count)),
-                        checkedOutPath: trees.first { $0.branch == String(ref) }?.path)
+                        checkedOutPath: worktrees.first { $0.branch == String(ref) }?.path)
         }
     }
 
@@ -90,7 +94,7 @@ public struct WorktreeRepository: Sendable {
         }
     }
 
-    private func validate(_ worktree: Worktree, project: Project) async throws {
+    func validate(_ worktree: Worktree, project: Project) async throws {
         guard !worktree.isBare else { throw GroveError.message("This operation requires a working tree.") }
         let repository = GitRepository(runner: runner)
         let actual = try await repository.project(at: URL(fileURLWithPath: worktree.path))
