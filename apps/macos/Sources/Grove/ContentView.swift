@@ -20,7 +20,6 @@ struct ContentView: View {
     @State private var diffSelection: FileDiffSelection?
     @State private var isDiffPanelVisible = false
     @State private var diffRevision = 0
-    @State private var pathCopyNotificationID: UUID?
     @GestureState private var sidebarDrag: CGFloat = 0
     @GestureState private var isResizingSidebar = false
 
@@ -99,31 +98,21 @@ struct ContentView: View {
         .background(colorScheme == .light ? GroveBrand.lightBackground : Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottom) {
             VStack {
-                if pathCopyNotificationID != nil {
-                    Label {
-                        Text("Path copied")
-                    } icon: {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    }
-                    .font(.callout.weight(.medium))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(.regularMaterial, in: Capsule())
-                    .overlay(Capsule().strokeBorder(.quaternary))
-                    .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-                    .transition(.opacity)
+                if let toast = model.toast {
+                    toastView(toast)
+                        .id(toast.id)
+                        .transition(.opacity)
                 }
             }
+            .padding(.horizontal, 24)
             .padding(.bottom, 24)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: pathCopyNotificationID != nil)
-            .allowsHitTesting(false)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: model.toast?.id)
         }
-        .task(id: pathCopyNotificationID) {
-            guard let notificationID = pathCopyNotificationID else { return }
-            do { try await Task.sleep(for: .seconds(2)) }
+        .task(id: model.toast?.id) {
+            guard let toast = model.toast else { return }
+            do { try await Task.sleep(for: toast.duration) }
             catch { return }
-            guard pathCopyNotificationID == notificationID else { return }
-            pathCopyNotificationID = nil
+            model.dismissToast(id: toast.id)
         }
         .toolbarBackground(colorScheme == .light ? AnyShapeStyle(GroveBrand.lightBackground) : AnyShapeStyle(.bar), for: .windowToolbar)
         .toolbarBackground(colorScheme == .light ? .visible : .automatic, for: .windowToolbar)
@@ -163,6 +152,43 @@ struct ContentView: View {
         )) { Button("OK") { model.actionError = nil } } message: {
             Text(model.actionError ?? "")
         }
+    }
+
+    private func toastView(_ toast: ToastNotification) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: toast.isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(toast.isError ? .red : .green)
+                .font(.callout)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(toast.message).font(.callout.weight(.medium))
+                if let detail = toast.detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(4)
+                        .textSelection(.enabled)
+                        .help(detail)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Button { model.dismissToast(id: toast.id) } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Dismiss notification")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 440, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.quaternary))
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
     }
 
     private var sidebar: some View {
@@ -310,7 +336,7 @@ struct ContentView: View {
                                                 }, onDelete: {
                                                     deletingWorktree = WorktreeRemovalTarget(worktree: worktree, project: project)
                                                 }, onPathCopied: {
-                                                    pathCopyNotificationID = UUID()
+                                                    model.toast = ToastNotification(message: "Path copied")
                                                 })
                                         .id(worktree.path)
                                 }

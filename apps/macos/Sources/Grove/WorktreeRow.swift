@@ -67,10 +67,7 @@ struct WorktreeRow: View {
                     HStack(spacing: 6) {
                         if canOperate {
                             Button {
-                                Task {
-                                    do { try await model.pull(worktree, project: project) }
-                                    catch { model.actionError = "Could not pull \(worktree.name).\n\(error.localizedDescription)" }
-                                }
+                                Task { await model.pull(worktree, project: project) }
                             } label: {
                                 LoadingIndicator(isLoading: model.busyWorktreePath == worktree.path,
                                                  label: pullTooltip, idleIcon: "arrow.down")
