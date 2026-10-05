@@ -1,0 +1,53 @@
+name: macOS CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS build and tests
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      GROVE_SIGNING_IDENTITY: "-"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          git --version
+
+      - name: Run macOS tests
+        run: make test-macos
+
+      - name: Build release app
+        run: make build-macos CONFIGURATION=release
+
+      - name: Validate app bundle
+        run: |
+          app=apps/macos/dist/Grove.app
+          test -x "$app/Contents/MacOS/Grove"
+          plutil -lint "$app/Contents/Info.plist"
+          test -s "$app/Contents/Resources/Grove.icns"
+          test -s "$app/Contents/Resources/LICENSE"
+          for resource in AppIcon.png AppIconDark.png MenuBarTemplate.png; do
+            test -s "$app/Contents/Resources/Grove_Grove.bundle/$resource"
+          done
+          codesign --verify --deep --strict --verbose=2 "$app"

@@ -186,7 +186,7 @@ final class WorkspaceModel {
     }
 
     private func performGitOperation<T>(path: String?, project: Project,
-                                        action: () async throws -> T) async throws -> T {
+                                        action: @MainActor () async throws -> T) async throws -> T {
         guard !isPerformingGitOperation else {
             throw GroveError.message("Wait for the current Git operation to finish.")
         }
