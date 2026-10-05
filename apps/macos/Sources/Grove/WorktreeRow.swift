@@ -23,6 +23,9 @@ struct WorktreeRow: View {
     private var exists: Bool { FileManager.default.fileExists(atPath: worktree.path) }
     private var canOperate: Bool { !worktree.isBare && exists && worktree.pruneReason == nil }
     private var isBusy: Bool { model.isPerformingGitOperation || model.isLoading || model.isProjectTransitioning }
+    private var pullTooltip: String {
+        worktree.isDetached ? "Switch to a branch before pulling." : "Pull latest changes from upstream"
+    }
 
     private struct ChangesRequest: Equatable {
         let reloadID: Int
@@ -61,36 +64,40 @@ struct WorktreeRow: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    if canOperate {
-                        Button {
-                            Task {
-                                do { try await model.pull(worktree, project: project) }
-                                catch { model.actionError = "Could not pull \(worktree.name).\n\(error.localizedDescription)" }
+                    HStack(spacing: 6) {
+                        if canOperate {
+                            Button {
+                                Task {
+                                    do { try await model.pull(worktree, project: project) }
+                                    catch { model.actionError = "Could not pull \(worktree.name).\n\(error.localizedDescription)" }
+                                }
+                            } label: {
+                                LoadingIndicator(isLoading: model.busyWorktreePath == worktree.path,
+                                                 label: pullTooltip, idleIcon: "arrow.down")
+                                    .modifier(WorktreeActionChrome())
                             }
-                        } label: {
-                            LoadingIndicator(isLoading: model.busyWorktreePath == worktree.path,
-                                             label: "Pull from upstream", idleIcon: "arrow.down.circle")
-                                .font(.system(size: 16))
-                                .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .disabled(model.isPerformingGitOperation || worktree.isDetached)
+                            .accessibilityLabel("Pull \(worktree.name)")
+                            .help(pullTooltip)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .disabled(model.isPerformingGitOperation || worktree.isDetached)
-                        .accessibilityLabel("Pull \(worktree.name)")
-                        .help(worktree.isDetached ? "Switch to a branch before pulling." : "Pull from upstream")
+
+                        Menu {
+                            Button("Delete Worktree…", role: .destructive, action: onDelete)
+                                .disabled(deletionUnavailableReason != nil)
+                            if let reason = deletionUnavailableReason { Text(reason) }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .frame(width: 24, height: 24)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .modifier(WorktreeActionChrome())
+                        .disabled(isBusy)
+                        .help(deletionUnavailableReason ?? "Worktree actions")
+                        .accessibilityLabel("Actions for \(worktree.name)")
                     }
-                    Menu {
-                        Button("Delete Worktree…", role: .destructive, action: onDelete)
-                            .disabled(deletionUnavailableReason != nil)
-                        if let reason = deletionUnavailableReason { Text(reason) }
-                    } label: {
-                        Image(systemName: "ellipsis.circle").font(.system(size: 16))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .disabled(isBusy)
-                    .help(deletionUnavailableReason ?? "Worktree actions")
-                    .accessibilityLabel("Actions for \(worktree.name)")
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -224,5 +231,27 @@ struct WorktreeRow: View {
         Text(text).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background(.quaternary, in: Capsule())
+    }
+}
+
+private struct WorktreeActionChrome: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        let highlighted = isEnabled && isHovering
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        content
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(highlighted ? .primary : .secondary)
+            .frame(width: 30, height: 30)
+            .background(.primary.opacity(highlighted ? 0.1 : (colorScheme == .dark ? 0.05 : 0.03)), in: shape)
+            .overlay(shape.strokeBorder(.primary.opacity(highlighted ? 0.16 : 0.07)))
+            .opacity(isEnabled ? 1 : 0.45)
+            .contentShape(shape)
+            .onHover { isHovering = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: highlighted)
     }
 }
