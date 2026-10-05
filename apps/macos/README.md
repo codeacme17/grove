@@ -51,6 +51,10 @@ Menu-bar access: [open, add, refresh, and quit](../../docs/menu-bar.md).
 
 Appearance controls: [System, Light, and Dark](../../docs/appearance.md).
 
+## Continuous integration
+
+GitHub Actions runs **macOS build and tests** for pull requests and pushes to `dev` and `main`, with a manual run also available. The workflow uses macOS 15 and Xcode 16.4, runs `make test-macos`, builds the release app, and validates the executable, property list, bundled artwork/license, and ad-hoc code signature. Superseded runs are cancelled. Developer ID signing, notarization, and publishing remain part of the [release workflow](../../docs/macos-release.md).
+
 ## Design
 
 - `Sources/Grove`: SwiftUI interface and observable workspace state.
