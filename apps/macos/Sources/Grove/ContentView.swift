@@ -82,8 +82,8 @@ struct ContentView: View {
                         Label(navigationPlacement == .top ? "Toggle Tab Bar" : "Toggle Sidebar",
                               systemImage: navigationPlacement == .top ? "rectangle.topthird.inset.filled" : "sidebar.left")
                     }
-                    .help(navigationPlacement == .top ? (showsTopTabBar ? "Hide Tab Bar" : "Show Tab Bar") : (showsSidebar ? "Hide Sidebar" : "Show Sidebar"))
-                    .keyboardShortcut("s", modifiers: [.command, .control])
+                    .help(navigationPlacement == .top ? (showsTopTabBar ? "Hide Tab Bar (⌘B)" : "Show Tab Bar (⌘B)") : (showsSidebar ? "Hide Sidebar (⌘B)" : "Show Sidebar (⌘B)"))
+                    .keyboardShortcut("b", modifiers: .command)
                 }
                 ToolbarItem {
                     if let project = model.selectedProject {
