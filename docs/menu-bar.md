@@ -17,9 +17,10 @@ appearance, independently of Grove's Light or Dark preference.
   an active load. With no selected project, the menu shows that state instead.
 - **Quit Grove** exits the application, including its menu-bar item.
 
-Closing the main window keeps Grove running. This does not enable login launch
-or continuous background scanning; the existing refresh behavior remains in
-place. The Dock icon is retained. Use Quit Grove or ⌘Q to exit completely.
+The main window updates the selected project's worktrees automatically when local
+Git metadata changes. **Refresh Worktrees** remains available as a manual fallback.
+Closing the main window keeps Grove running without enabling login launch. The
+Dock icon is retained. Use Quit Grove or ⌘Q to exit completely.
 
 ## Window coordination
 
