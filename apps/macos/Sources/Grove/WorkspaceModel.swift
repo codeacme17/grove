@@ -33,6 +33,7 @@ final class WorkspaceModel {
     @ObservationIgnored private let repository = GitRepository()
     @ObservationIgnored private let store: ProjectStore
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshGeneration = 0
 
     var displayedProject: Project? { projects.first { $0.id == snapshotProjectID } ?? selectedProject }
     var isProjectTransitioning: Bool { displayedProject?.id != selectedProject?.id }
@@ -161,6 +162,7 @@ final class WorkspaceModel {
         guard busyWorktreePath == nil else {
             throw GroveError.message("Wait for the current Git operation to finish.")
         }
+        refreshGeneration += 1
         busyWorktreePath = worktree.path
         worktreeMessages[worktree.path] = nil
         defer {
@@ -174,9 +176,48 @@ final class WorkspaceModel {
         worktreeMessages[worktree.path] = try await action()
     }
 
+    func observeWorktrees() async {
+        guard let project = selectedProject else { return }
+        // The common directory includes HEAD, refs, and every linked worktree's metadata.
+        let monitor = FileChangeMonitor(paths: [project.gitDirectory])
+        defer { monitor.stop() }
+        for await _ in monitor.events {
+            // Finish an explicit refresh before reading again, so an event during that
+            // read is not lost. The stream coalesces events while Git is running.
+            await refreshTask?.value
+            guard !Task.isCancelled, selection == project.id else { return }
+            // Grove's own operations refresh when they finish.
+            guard busyWorktreePath == nil else { continue }
+            let generation = refreshGeneration
+            do {
+                let result = try await repository.worktrees(in: project)
+                guard !Task.isCancelled, selection == project.id else { return }
+                guard generation == refreshGeneration else { continue }
+                let needsUpdate = snapshotProjectID != project.id || worktrees != result || loadError != nil
+                loadError = nil
+                // Leave the timestamp alone for unchanged results: changing it restarts
+                // the diff observers and reloads the selected patch.
+                if needsUpdate { updateSnapshot(result, project: project) }
+            } catch {
+                guard !Task.isCancelled, selection == project.id else { return }
+                guard generation == refreshGeneration else { continue }
+                loadError = error.localizedDescription
+            }
+        }
+    }
+
+    private func updateSnapshot(_ result: [Worktree], project: Project) {
+        worktrees = result
+        snapshotProjectID = project.id
+        let timestamp = Date()
+        updatedAt = timestamp
+        projectSnapshots[project.id] = ProjectSnapshot(worktrees: result, updatedAt: timestamp)
+    }
+
     func refresh() {
         let project = selectedProject
         if isLoading && loadingProjectID == project?.id { return }
+        refreshGeneration += 1
         refreshTask?.cancel()
         if project == nil || !projects.contains(where: { $0.id == snapshotProjectID }) {
             worktrees = []
@@ -197,11 +238,7 @@ final class WorkspaceModel {
             do {
                 let result = try await repository.worktrees(in: project)
                 guard !Task.isCancelled, selection == project.id else { return }
-                worktrees = result
-                snapshotProjectID = project.id
-                let timestamp = Date()
-                updatedAt = timestamp
-                projectSnapshots[project.id] = ProjectSnapshot(worktrees: result, updatedAt: timestamp)
+                updateSnapshot(result, project: project)
                 isLoading = false
             } catch {
                 guard !Task.isCancelled, selection == project.id else { return }

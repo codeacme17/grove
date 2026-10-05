@@ -83,15 +83,6 @@ struct ContentView: View {
                     .help(navigationPlacement == .top ? (showsTopTabBar ? "Hide Tab Bar" : "Show Tab Bar") : (showsSidebar ? "Hide Sidebar" : "Show Sidebar"))
                     .keyboardShortcut("s", modifiers: [.command, .control])
                 }
-                ToolbarItem {
-                    if model.selectedProject != nil {
-                        Button(action: model.refresh) {
-                            LoadingIndicator(isLoading: model.isLoading, label: "Refresh worktrees", idleIcon: "arrow.clockwise")
-                        }
-                        .disabled(model.isLoading)
-                        .help("Refresh Worktrees (⌘R)")
-                    }
-                }
             }
         }
         .background(colorScheme == .light ? GroveBrand.lightBackground : Color(nsColor: .windowBackgroundColor))
@@ -127,6 +118,7 @@ struct ContentView: View {
         .toolbarBackground(colorScheme == .light ? .visible : .automatic, for: .windowToolbar)
         .navigationTitle(model.displayedProject?.name ?? "Grove")
         .onAppear { model.refresh() }
+        .task(id: model.selection) { await model.observeWorktrees() }
         .onChange(of: model.selection) {
             isDiffPanelVisible = false
             model.refresh()
@@ -265,7 +257,7 @@ struct ContentView: View {
                 } else if model.worktrees.isEmpty {
                     ContentUnavailableView {
                         GroveEmptyStateLabel(title: "No registered worktrees")
-                    } description: { Text("Refresh to read the latest state from Git.") }
+                    } description: { Text("Worktrees will appear automatically when registered with Git.") }
                 } else {
                     ScrollView {
                         VStack(spacing: 12) {
