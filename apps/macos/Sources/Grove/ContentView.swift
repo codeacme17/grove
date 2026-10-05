@@ -9,6 +9,7 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("projectNavigationPlacement") private var navigationPlacement: ProjectNavigationPlacement = .sidebar
     @State private var isSidebarVisible = true
+    @State private var isTopTabBarVisible = true
     @State private var sidebarWidth: CGFloat = 240
     @State private var isHoveringSidebarHandle = false
     @State private var renamingProject: Project?
@@ -17,6 +18,7 @@ struct ContentView: View {
     @State private var diffSelection: FileDiffSelection?
     @State private var isDiffPanelVisible = false
     @State private var diffRevision = 0
+    @State private var pathCopyNotificationID: UUID?
     @GestureState private var sidebarDrag: CGFloat = 0
     @GestureState private var isResizingSidebar = false
 
@@ -25,14 +27,15 @@ struct ContentView: View {
     var body: some View {
         GeometryReader { geometry in
             let showsSidebar = navigationPlacement == .sidebar && isSidebarVisible && (!isDiffPanelVisible || geometry.size.width >= currentSidebarWidth + 706)
+            let showsTopTabBar = navigationPlacement == .top && isTopTabBarVisible
             VStack(spacing: 0) {
-                ProjectTabBar(model: model, isVisible: navigationPlacement == .top, onRename: { renamingProject = $0 },
+                ProjectTabBar(model: model, isVisible: showsTopTabBar, onRename: { renamingProject = $0 },
                               onSwitchToSidebar: { setNavigationPlacement(.sidebar, availableWidth: geometry.size.width) })
-                    .frame(height: navigationPlacement == .top ? 48 : 0, alignment: .top)
+                    .frame(height: showsTopTabBar ? 48 : 0, alignment: .top)
                     .clipped()
-                    .allowsHitTesting(navigationPlacement == .top)
-                    .disabled(navigationPlacement != .top)
-                    .accessibilityHidden(navigationPlacement != .top)
+                    .allowsHitTesting(showsTopTabBar)
+                    .disabled(!showsTopTabBar)
+                    .accessibilityHidden(!showsTopTabBar)
                 HStack(spacing: 0) {
                     HStack(spacing: 0) {
                         sidebar
@@ -60,12 +63,13 @@ struct ContentView: View {
                 }
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showsSidebar)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showsTopTabBar)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: navigationPlacement)
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     Button {
                         if navigationPlacement == .top {
-                            setNavigationPlacement(.sidebar, availableWidth: geometry.size.width)
+                            isTopTabBarVisible.toggle()
                         } else if !showsSidebar && isDiffPanelVisible && geometry.size.width < currentSidebarWidth + 706 {
                             isDiffPanelVisible = false
                             isSidebarVisible = true
@@ -73,27 +77,48 @@ struct ContentView: View {
                             isSidebarVisible.toggle()
                         }
                     } label: {
-                        Label(navigationPlacement == .top ? "Switch to Sidebar" : "Toggle Sidebar", systemImage: "sidebar.left")
+                        Label(navigationPlacement == .top ? "Toggle Tab Bar" : "Toggle Sidebar",
+                              systemImage: navigationPlacement == .top ? "rectangle.topthird.inset.filled" : "sidebar.left")
                     }
-                    .help(navigationPlacement == .top ? "Switch to Sidebar" : (showsSidebar ? "Hide Sidebar" : "Show Sidebar"))
+                    .help(navigationPlacement == .top ? (showsTopTabBar ? "Hide Tab Bar" : "Show Tab Bar") : (showsSidebar ? "Hide Sidebar" : "Show Sidebar"))
                     .keyboardShortcut("s", modifiers: [.command, .control])
-                }
-                ToolbarItem {
-                    if model.selectedProject != nil {
-                        Button(action: model.refresh) {
-                            LoadingIndicator(isLoading: model.isLoading, label: "Refresh worktrees", idleIcon: "arrow.clockwise")
-                        }
-                        .disabled(model.isLoading)
-                        .help("Refresh Worktrees (⌘R)")
-                    }
                 }
             }
         }
         .background(colorScheme == .light ? GroveBrand.lightBackground : Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) {
+            VStack {
+                if pathCopyNotificationID != nil {
+                    Label {
+                        Text("Path copied")
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    }
+                    .font(.callout.weight(.medium))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(.quaternary))
+                    .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+                    .transition(.opacity)
+                }
+            }
+            .padding(.bottom, 24)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: pathCopyNotificationID != nil)
+            .allowsHitTesting(false)
+        }
+        .task(id: pathCopyNotificationID) {
+            guard let notificationID = pathCopyNotificationID else { return }
+            do { try await Task.sleep(for: .seconds(2)) }
+            catch { return }
+            guard pathCopyNotificationID == notificationID else { return }
+            pathCopyNotificationID = nil
+        }
         .toolbarBackground(colorScheme == .light ? AnyShapeStyle(GroveBrand.lightBackground) : AnyShapeStyle(.bar), for: .windowToolbar)
         .toolbarBackground(colorScheme == .light ? .visible : .automatic, for: .windowToolbar)
         .navigationTitle(model.displayedProject?.name ?? "Grove")
         .onAppear { model.refresh() }
+        .task(id: model.selection) { await model.observeWorktrees() }
         .onChange(of: model.selection) {
             isDiffPanelVisible = false
             model.refresh()
@@ -162,7 +187,9 @@ struct ContentView: View {
 
     private func setNavigationPlacement(_ placement: ProjectNavigationPlacement, availableWidth: CGFloat? = nil) {
         navigationPlacement = placement
-        if placement == .sidebar {
+        if placement == .top {
+            isTopTabBarVisible = true
+        } else {
             isSidebarVisible = true
             if let availableWidth, availableWidth < currentSidebarWidth + 706 {
                 isDiffPanelVisible = false
@@ -230,13 +257,14 @@ struct ContentView: View {
                 } else if model.worktrees.isEmpty {
                     ContentUnavailableView {
                         GroveEmptyStateLabel(title: "No registered worktrees")
-                    } description: { Text("Refresh to read the latest state from Git.") }
+                    } description: { Text("Worktrees will appear automatically when registered with Git.") }
                 } else {
                     ScrollView {
                         VStack(spacing: 12) {
                             ForEach(Array(model.worktrees.enumerated()), id: \.element.id) { index, worktree in
                                 WorktreeRow(worktree: worktree, project: project, isMain: index == 0,
-                                            model: model, isDiffExpanded: Binding(
+                                            model: model, changesState: model.changesModel(for: worktree, project: project),
+                                            isDiffExpanded: Binding(
                                                 get: { expandedDiffs.contains(worktree.path) },
                                                 set: { expanded in
                                                     if expanded { expandedDiffs.insert(worktree.path) }
@@ -252,8 +280,14 @@ struct ContentView: View {
                                                         isDiffPanelVisible = false
                                                     }
                                                 }
-                                            ), onDiffRefresh: { diffRevision += 1 }, onSwitchBranch: {
+                                            ), onDiffRefresh: {
+                                                if isDiffPanelVisible, diffSelection?.worktree.path == worktree.path {
+                                                    diffRevision += 1
+                                                }
+                                            }, onSwitchBranch: {
                                                 switchingWorktree = BranchSwitchTarget(worktree: worktree, project: project)
+                                            }, onPathCopied: {
+                                                pathCopyNotificationID = UUID()
                                             })
                             }
                         }
